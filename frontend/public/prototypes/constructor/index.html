@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Construct – Конструктор лендингов</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-logo">Smart Construct</div>
+    <div class="app-subtitle">Прототип конструктора лендингов для CPA</div>
+  </header>
+
+  <main class="app-main">
+    <section class="app-config">
+      <div class="steps-nav-wrap">
+        <nav class="steps-nav">
+          <button class="step-tab active" data-step="design">Дизайн</button>
+          <button class="step-tab" data-step="content">Контент</button>
+          <button class="step-tab" data-step="analytics">Аналитика</button>
+        </nav>
+      </div>
+
+      <div class="steps-scroll">
+        <div class="steps-container">
+        <!-- Шаг Дизайн -->
+        <div class="step-panel" id="step-design">
+          <h2>Дизайн лендинга</h2>
+          <div class="form-group">
+            <label for="landing-title">Заголовок лендинга</label>
+            <input id="landing-title" type="text" placeholder="Например: Лучшие офферы под ваш трафик" />
+          </div>
+
+          <div class="form-group">
+            <label for="landing-description">Описание лендинга</label>
+            <div class="textarea-wrap">
+              <textarea id="landing-description" rows="3" maxlength="500" placeholder="Короткое описание ценности для пользователя"></textarea>
+              <div id="landing-description-counter" class="char-counter">0/500</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="offer-points-card landing-points-card">
+              <div class="offer-points-title">Пойнты</div>
+              <p class="offer-points-desc">Добавьте краткие УТП для лендинга, чтобы показать пользователю основные преимущества</p>
+              <div id="landing-points-rows" class="offer-points-rows"></div>
+              <button type="button" id="landing-points-add" class="offer-points-add-btn">+ Добавить пойнт</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <span class="label">Вариант дизайна</span>
+            <div class="design-options">
+              <label class="design-option">
+                <input type="radio" name="design-variant" value="variant1" checked />
+                <span>
+                  <strong>Вариант 1</strong><br />
+                  Светлый, крупный заголовок, сетка офферов
+                </span>
+              </label>
+              <label class="design-option">
+                <input type="radio" name="design-variant" value="variant2" />
+                <span>
+                  <strong>Вариант 2</strong><br />
+                  Левый заголовок, список офферов
+                </span>
+              </label>
+              <label class="design-option">
+                <input type="radio" name="design-variant" value="variant3" />
+                <span>
+                  <strong>Вариант 3</strong><br />
+                  Компактные карточки, более тёмный хедер
+                </span>
+              </label>
+              <label class="design-option">
+                <input type="radio" name="design-variant" value="variant4" />
+                <span>
+                  <strong>Вариант 4</strong><br />
+                  Крупный заголовок и карточки, изображение в шапке
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="offers-two-col-head">
+              <label class="offers-two-col-title" for="offers-two-col-desktop">
+                <input type="checkbox" id="offers-two-col-desktop" />
+                <span>Карточки в два ряда</span>
+                <span class="tooltip offers-two-col-tooltip">
+                  <span class="info-icon" tabindex="0" aria-label="Информация" role="img">?</span>
+                  <span class="tooltip-content" role="tooltip">Только для десктопной версии</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <h2>Дизайн офферов</h2>
+          <div id="offer-design-container"></div>
+        </div>
+
+        <!-- Шаг Контент -->
+        <div class="step-panel hidden" id="step-content">
+          <h2>Контент и офферы</h2>
+
+          <div class="form-group">
+            <label for="offer-id-search">Поиск по ID оффера</label>
+            <input id="offer-id-search" type="text" inputmode="numeric" placeholder="Введите ID" />
+          </div>
+
+          <div class="filters-row">
+            <div class="form-group">
+              <label for="filter-geo">ГЕО</label>
+              <select id="filter-geo">
+                <option value="">Все</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="filter-source">Источник трафика</label>
+              <select id="filter-source">
+                <option value="">Все</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="sort-metric">Сортировка</label>
+              <select id="sort-metric">
+                <option value="none">Без сортировки</option>
+                <option value="epc">По EPC</option>
+                <option value="cr">По CR</option>
+                <option value="score">По скоринговому баллу</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="offers-table-wrapper">
+            <table class="offers-table">
+              <thead>
+                <tr>
+                  <th>
+                    <label class="offers-select-all-header">
+                      <input type="checkbox" id="offers-select-all" />
+                      <span>Вкл</span>
+                    </label>
+                  </th>
+                  <th>ID оффера</th>
+                  <th>Оффер</th>
+                  <th>ГЕО</th>
+                  <th>Источник</th>
+                  <th>EPC</th>
+                  <th>CR, %</th>
+                  <th>Скоринг</th>
+                </tr>
+              </thead>
+              <tbody id="offers-body">
+                <!-- Заполняется из JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="form-group legal-info-group">
+            <label for="legal-info">Юридическая информация</label>
+            <div class="textarea-wrap">
+              <textarea id="legal-info" placeholder="Введите юридическую информацию"></textarea>
+            </div>
+          </div>
+
+          <div class="ranking-panel">
+            <div class="ranking-head">
+              <div class="ranking-title">
+                Ранжирование офферов
+                <span class="tooltip">
+                  <span class="info-icon" tabindex="0" aria-label="Информация" role="img">?</span>
+                  <span class="tooltip-content" role="tooltip">
+                    Используйте сортировку из таблицы, чтобы ранжировать список офферов на витрине по нужному параметру.
+                    <br /><br />
+                    Либо используйте автоматическое ранжирование — порядок офферов будет меняться динамически под параметры конкретного пользователя, выводя в топ лучшие варианты.
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div class="ranking-toggle" role="radiogroup" aria-label="Режим ранжирования">
+              <label class="ranking-option" id="rank-opt-table">
+                <input type="radio" name="ranking-mode" value="table" />
+                <span>Ранжировать по фильтру таблицы</span>
+              </label>
+              <label class="ranking-option">
+                <input type="radio" name="ranking-mode" value="auto" checked />
+                <span>Ранжировать автоматически</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="trafficback-panel">
+            <div class="ranking-head">
+              <div class="ranking-title">
+                TrafficBack
+                <span class="tooltip">
+                  <span class="info-icon" tabindex="0" aria-label="Информация" role="img">?</span>
+                  <span class="tooltip-content" role="tooltip">
+                    Инструмент позволяет дополнительно монетизировать пользователей, зашедших на вашу витрину, подменяя страницу при нажатии в браузере на кнопку «Назад».
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div class="trafficback-toggle" role="radiogroup" aria-label="TrafficBack">
+              <label class="ranking-option">
+                <input type="radio" name="trafficback-mode" value="none" checked />
+                <span>Не использовать</span>
+              </label>
+              <label class="ranking-option">
+                <input type="radio" name="trafficback-mode" value="custom" />
+                <span>Собственный url</span>
+              </label>
+              <label class="ranking-option">
+                <input type="radio" name="trafficback-mode" value="offer" />
+                <span>Редирект на выбранный оффер</span>
+              </label>
+            </div>
+            <div class="form-group trafficback-url-wrap">
+              <label for="trafficback-url-input">URL</label>
+              <input type="text" id="trafficback-url-input" placeholder="https://link.sync.example" />
+              <select id="trafficback-url-select" class="hidden" aria-hidden="true">
+                <option value="">Выберите оффер из списка</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Шаг Аналитика -->
+        <div class="step-panel hidden" id="step-analytics">
+          <h2>Аналитика и трекинг</h2>
+
+          <div class="form-group">
+            <label for="tracking-link">Трекинговый домен Sync</label>
+            <select id="tracking-link">
+              <option value="pxlsync.su" selected>pxlsync.su</option>
+              <option value="trksync.com">trksync.com</option>
+              <option value="link.sync">link.sync</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="label">Постоянные метки в ссылках офферов</label>
+            <div class="permanent-tags-card">
+              <p class="permanent-tags-desc">Данные метки будут всегда подставляться в URL адрес офферов на витрине</p>
+              <div id="permanent-tags-rows" class="permanent-tags-rows"></div>
+              <button type="button" id="permanent-tags-add" class="permanent-tags-add-btn">+ Добавить значение</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="custom-js">Свой JS-код для лендинга</label>
+            <textarea id="custom-js" rows="4" placeholder="// Вставьте здесь код пикселей, аналитики и т.п. (прототип, код не выполняется)"></textarea>
+          </div>
+
+          <div class="form-group">
+            <span class="label">Домен лендинга</span>
+            <div class="domain-options">
+              <label>
+                <input type="radio" name="domain-type" value="system" checked />
+                Системный домен
+              </label>
+              <label>
+                <input type="radio" name="domain-type" value="custom" />
+                Свой домен
+              </label>
+            </div>
+
+            <div class="domain-fields">
+              <div class="domain-system field-block" id="domain-system-block">
+                <label for="system-domain">Выберите системный домен</label>
+                <select id="system-domain">
+                  <option value="smart-1.smartconstruct.app">smart-1.smartconstruct.app</option>
+                  <option value="offers.smartconstruct.app">offers.smartconstruct.app</option>
+                  <option value="click.smartconstruct.app">click.smartconstruct.app</option>
+                </select>
+              </div>
+
+              <div class="domain-custom field-block hidden" id="domain-custom-block">
+                <label for="custom-domain">Ваш домен</label>
+                <input id="custom-domain" type="text" placeholder="my-landing.com" />
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="app-preview">
+      <div class="preview-header">
+        <h2>Превью лендинга</h2>
+        <div class="preview-mode-toggle" aria-label="Формат превью">
+          <button class="preview-mode-btn active" data-mode="mobile" type="button">
+            <span class="device-icon device-mobile"></span>
+            <span class="device-label">Моб.</span>
+          </button>
+          <button class="preview-mode-btn" data-mode="desktop" type="button">
+            <span class="device-icon device-desktop"></span>
+            <span class="device-label">Десктоп</span>
+          </button>
+        </div>
+      </div>
+      <div class="preview-body">
+        <div class="preview-scroll">
+          <div id="landing-preview" class="landing-preview landing-variant1">
+            <!-- Заполняется из JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-actions">
+        <button id="open-result-landing" type="button" class="preview-view-btn">
+          Посмотреть результат
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

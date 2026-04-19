@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Конструктор витрин — Список витрин</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar" aria-label="Навигация">
+        <div class="sidebar-top">
+          <div class="sidebar-company">
+            <div class="sidebar-company-avatar" aria-hidden="true">
+              <span class="sidebar-company-letter">S</span>
+            </div>
+            <div class="sidebar-company-text">
+              <div class="sidebar-company-name">Sync Showcase</div>
+            </div>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button type="button" class="nav-item is-active" aria-current="page" data-view="showcases">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-builder"></span></span>
+            <span class="nav-label">Конструктор витрин</span>
+          </button>
+          <button type="button" class="nav-item" data-view="domain-parking">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-domain"></span></span>
+            <span class="nav-label">Парковка домена</span>
+          </button>
+          <button type="button" class="nav-item">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-chart"></span></span>
+            <span class="nav-label">Статистика</span>
+          </button>
+          <button type="button" class="nav-item">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-tag"></span></span>
+            <span class="nav-label">Офферы</span>
+          </button>
+          <button type="button" class="nav-item">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-help"></span></span>
+            <span class="nav-label">Помощь</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar" aria-hidden="true"></div>
+            <div class="sidebar-user-text">
+              <div class="sidebar-user-name">shadcn</div>
+              <div class="sidebar-user-email">m@example.com</div>
+            </div>
+            <div class="sidebar-user-arrows" aria-hidden="true">
+              <span class="icon icon-logout"></span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="page" aria-label="Контент">
+        <section id="view-showcases" class="view">
+          <div class="page-head">
+            <div class="page-title">Список созданных лендингов</div>
+            <button type="button" id="create-showcase" class="btn-primary">
+              Создать новую витрину
+            </button>
+          </div>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table class="showcases-table" aria-label="Список витрин">
+                <thead>
+                  <tr>
+                    <th class="col-id">ID</th>
+                    <th class="col-platform">Площадка</th>
+                    <th class="col-url">Адрес страницы</th>
+                    <th class="col-actions" aria-label="Действия"></th>
+                  </tr>
+                </thead>
+                <tbody id="showcases-body"></tbody>
+              </table>
+            </div>
+
+            <div id="empty-state" class="empty hidden">
+              Витрин пока нет — нажмите «Создать новую витрину».
+            </div>
+          </section>
+        </section>
+
+        <section id="view-domain-parking" class="view hidden">
+          <section class="panel form-panel">
+            <div class="form-grid">
+              <div class="field-row">
+                <label class="field-label" for="system-domain-select">
+                  Системный домен <span class="req">*</span>
+                </label>
+                <select id="system-domain-select">
+                  <option value="smart-1.smartconstruct.app">smart-1.smartconstruct.app</option>
+                  <option value="offers.smartconstruct.app">offers.smartconstruct.app</option>
+                  <option value="click.smartconstruct.app">click.smartconstruct.app</option>
+                </select>
+              </div>
+
+              <div class="field-row">
+                <label class="field-label" for="webmaster-domain-input">
+                  Домен вебмастера <span class="req">*</span>
+                </label>
+                <input id="webmaster-domain-input" type="text" placeholder="" />
+              </div>
+
+              <label class="check-row">
+                <input id="domain-confirm" type="checkbox" />
+                <span>Я подтверждаю, что являюсь владельцем указанного доменного имени</span>
+              </label>
+
+              <div class="form-actions">
+                <button type="button" id="domain-save" class="btn-save">Сохранить</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel table-panel">
+            <div class="table-wrap">
+              <table class="domains-table" aria-label="Список доменов">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Дата создания</th>
+                    <th>Домен вебмастера</th>
+                    <th>Системный домен</th>
+                    <th>Статус</th>
+                    <th>Комментарий сотрудника</th>
+                    <th class="col-actions" aria-label="Действия"></th>
+                  </tr>
+                </thead>
+                <tbody id="domains-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast-top" class="toast toast-top hidden" role="status" aria-live="polite"></div>
+
+    <div id="modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close="true"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <div id="modal-title" class="modal-title">Статистика</div>
+          <button type="button" class="icon-btn" data-close="true" aria-label="Закрыть">
+            <span class="icon icon-x" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+

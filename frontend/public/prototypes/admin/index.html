@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Админка — Прототип</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar" aria-label="Навигация">
+        <div class="sidebar-top">
+          <div class="sidebar-company">
+            <div class="sidebar-company-avatar" aria-hidden="true">
+              <span class="sidebar-company-letter">S</span>
+            </div>
+            <div class="sidebar-company-text">
+              <div class="sidebar-company-name">Sync Showcase</div>
+            </div>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button type="button" class="nav-item is-active" aria-current="page" data-view="users">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-builder"></span></span>
+            <span class="nav-label">Пользователи</span>
+          </button>
+          <button type="button" class="nav-item" data-view="domain-parking">
+            <span class="nav-icon" aria-hidden="true"><span class="icon icon-domain"></span></span>
+            <span class="nav-label">Парковка доменов</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar" aria-hidden="true"></div>
+            <div class="sidebar-user-text">
+              <div class="sidebar-user-name">shadcn</div>
+              <div class="sidebar-user-email">m@example.com</div>
+            </div>
+            <div class="sidebar-user-arrows" aria-hidden="true">
+              <span class="icon icon-logout"></span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="page" aria-label="Контент">
+        <section id="view-users" class="view">
+          <div class="page-head">
+            <div class="page-title">Пользователи</div>
+          </div>
+
+          <div class="search-row">
+            <input id="users-search" class="search-input" type="text" placeholder="Поиск по имени или email" />
+          </div>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table class="admin-table" aria-label="Таблица пользователей">
+                <thead>
+                  <tr>
+                    <th>Имя пользователя</th>
+                    <th>Email пользователя</th>
+                    <th>Кол-во витрин</th>
+                    <th>Статус</th>
+                    <th></th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="view-domain-parking" class="view hidden">
+          <div class="page-head">
+            <div class="page-title">Парковка доменов</div>
+          </div>
+
+          <div class="search-row">
+            <input id="domains-search" class="search-input" type="text" placeholder="Поиск по имени или email" />
+          </div>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table class="admin-table" aria-label="Таблица заявок на парковку доменов">
+                <thead>
+                  <tr>
+                    <th>Имя пользователя</th>
+                    <th>Email пользователя</th>
+                    <th>Дата заявки</th>
+                    <th>Домен на парковку</th>
+                    <th>Статус</th>
+                    <th></th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="domains-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast-top" class="toast toast-top hidden" role="status" aria-live="polite"></div>
+
+    <div id="modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close="true"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <div id="modal-title" class="modal-title">Окно</div>
+          <button type="button" class="icon-btn" data-close="true" aria-label="Закрыть">
+            <span class="icon icon-x" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+

@@ -1,28 +1,24 @@
 from __future__ import annotations
 
+from dependency_injector.wiring import Provide, inject
 from fastapi import Depends, HTTPException, Request, Response, status
 
-from di_container import api_uow, container
+from cfg import ADMINS_LIST
+from di_container import api_uow, container as c
 from src.app.core.auth_sessions import get_live_session
-from src.app.core.config import Settings, get_settings
+from src.app.core.security import SecurityService
 from src.app.schemas.auth import AuthUser, JWTClaims
 from src.infrastructure.models.session import AppSession
 from src.modules.shared.unit_of_work import UnitOfWork
 
 
-async def get_settings_dep() -> Settings:
-    return get_settings()
-
-
 async def get_current_claims(request: Request) -> JWTClaims | None:
-    sec = container.security_service()
+    sec = c.security_service()
     access_token = request.cookies.get(sec.ACCESS_COOKIE)
     if not access_token:
         return None
 
     claims = sec.decode_token(access_token)
-    if claims.token_type != "access":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication failed")
     return claims
 
 
@@ -34,11 +30,15 @@ async def get_current_session(
 ) -> AppSession | None:
     if not claims:
         return None
-    return await get_live_session(uow, response, container.security_service(), claims.session_id, claims.user_id)
+    return await get_live_session(uow, response, claims.session_id, claims.user_id)
 
 
 async def get_current_user(claims: JWTClaims | None = Depends(get_current_claims)) -> AuthUser | None:
     return claims.to_auth_user() if claims else None
+
+
+def require_auth(request: Request):
+    return c.security_service().require_auth(request)
 
 
 async def require_user(user: AuthUser | None = Depends(get_current_user)) -> AuthUser:
@@ -59,16 +59,15 @@ async def require_not_banned(user: AuthUser = Depends(require_user)) -> AuthUser
     return user
 
 
-def is_admin_email(email: str, settings: Settings) -> bool:
-    allowed = {str(item.get("email", "")).lower() for item in settings.admins_list}
+def is_admin_email(email: str) -> bool:
+    allowed = {str(item.get("email", "")).lower() for item in ADMINS_LIST}
     return email.lower() in allowed
 
 
 async def require_admin(
-    user: AuthUser = Depends(require_user),
-    settings: Settings = Depends(get_settings_dep),
+    user: AuthUser = Depends(require_user)
 ) -> AuthUser:
-    if not user.is_admin or not is_admin_email(user.email, settings):
+    if not user.is_admin or not is_admin_email(user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return user
 
@@ -83,7 +82,7 @@ async def require_onboarded(user: AuthUser = Depends(require_not_banned)) -> Aut
 
 
 async def require_csrf(request: Request) -> None:
-    sec = container.security_service()
+    sec = c.security_service()
     sec.require_csrf(request)
 
 
@@ -112,15 +111,16 @@ async def get_impersonating_flag(session: AppSession | None = Depends(get_curren
     return bool(session and session.impersonator_admin_id)
 
 
+@inject
 async def maybe_user_context(
     request: Request,
     user: AuthUser | None = Depends(get_current_user),
-    settings: Settings = Depends(get_settings_dep),
+    sec: SecurityService = Depends(Provide[SecurityService]),
+
 ) -> dict:
-    sec = container.security_service()
     return {
         "user": user,
-        "is_admin": bool(user and user.is_admin and is_admin_email(user.email, settings)),
+        "is_admin": bool(user and user.is_admin and is_admin_email(user.email)),
         "impersonating": bool(user and user.impersonating),
         "csrf_token": request.cookies.get(sec.CSRF_COOKIE),
     }

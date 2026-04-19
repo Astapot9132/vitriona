@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, Request, Response
+from datetime import datetime
 
-from src.app.core.config import Settings
-from src.app.core.db import utcnow
-from src.app.core.security import SecurityService, expires_at, generate_csrf_secret, generate_session_id
+import pytz
+from dependency_injector.wiring import Provide
+from fastapi import HTTPException, Request, Response, Depends
+
+from cfg import REFRESH_TOKEN_EXPIRE_SECONDS
+from src.app.core.dependencies import is_admin_email
+from src.app.core.security import SecurityService
 from src.app.schemas.auth import AuthUser
 from src.infrastructure.models.session import AppSession
 from src.infrastructure.models.user import User
 from src.modules.shared.unit_of_work import UnitOfWork
+from di_container import api_uow, container as c
 
 
-def _is_admin_email(email: str, settings: Settings) -> bool:
-    allowed = {str(item.get("email", "")).lower() for item in settings.admins_list}
-    return email.lower() in allowed
 
-
-def build_auth_user(user: User, session: AppSession, settings: Settings) -> AuthUser:
+def build_auth_user(user: User, session: AppSession) -> AuthUser:
     return AuthUser(
         id=user.id,
         name=user.name,
@@ -26,7 +27,7 @@ def build_auth_user(user: User, session: AppSession, settings: Settings) -> Auth
         affise_id=user.affise_id,
         affise_api_key=user.affise_api_key,
         is_banned=user.is_banned,
-        is_admin=_is_admin_email(user.email, settings),
+        is_admin=is_admin_email(user.email),
         impersonating=bool(session.impersonator_admin_id),
     )
 
@@ -50,7 +51,7 @@ async def get_session_by_refresh_cookie(
     if not refresh_token:
         return None
 
-    options = None if verify_exp else {"verify_exp": False}
+    options = {"verify_exp": verify_exp}
     try:
         claims = sec.decode_token(refresh_token, options=options)
     except HTTPException:
@@ -77,16 +78,16 @@ async def create_auth_session(
     request: Request,
     user: User,
     sec: SecurityService,
-    settings: Settings,
     impersonator_admin_id: int | None = None,
+
 ) -> AppSession:
     session = AppSession(
-        id=generate_session_id(),
+        id=sec.generate_session_id(),
         user_id=user.id,
-        csrf_token=generate_csrf_secret(),
+        csrf_token=sec.generate_csrf_secret(),
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        expires_at=expires_at(settings.refresh_token_expire_seconds),
+        expires_at=sec.expires_at(REFRESH_TOKEN_EXPIRE_SECONDS),
         impersonator_admin_id=impersonator_admin_id,
     )
     await uow.sessions.add(session)
@@ -130,9 +131,9 @@ async def revoke_session_by_refresh_cookie(
 async def get_live_session(
     uow: UnitOfWork,
     response: Response,
-    sec: SecurityService,
     session_id: str,
     user_id: int,
+    sec: SecurityService = Depends(Provide[c.security_service]),
 ) -> AppSession | None:
     session = await uow.sessions.get_by_id_with_user(session_id)
     if not session:
@@ -142,7 +143,7 @@ async def get_live_session(
         sec.clear_auth_cookies(response)
         return None
 
-    if session.expires_at <= utcnow():
+    if session.expires_at <= datetime.now(pytz.UTC):
         await uow.sessions.delete(session)
         await uow.commit()
         sec.clear_auth_cookies(response)

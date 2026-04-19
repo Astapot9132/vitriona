@@ -37,12 +37,12 @@ class AuthUser(BaseModel):
     impersonating: bool = False
 
 
+
 class JWTClaims(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: int
     session_id: str = Field(alias="sid")
-    token_type: Literal["access", "refresh"] = Field(alias="type")
     exp: datetime
     name: str | None = None
     email: str | None = None

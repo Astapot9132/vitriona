@@ -12,17 +12,10 @@ from src.app.core.auth_sessions import (
     revoke_session_by_refresh_cookie,
     rotate_session_credentials,
 )
-from src.app.core.config import Settings
-from src.app.core.db import utcnow
-from src.app.core.dependencies import get_settings_dep, is_admin_email
+from src.app.core.dependencies import is_admin_email
 from src.app.core.rate_limit import rate_limiter
 from src.app.core.security import (
     SecurityService,
-    generate_pin,
-    generate_random_password,
-    hash_password,
-    hash_pin,
-    verify_pin,
 )
 from src.app.schemas.auth import PinSendRequest, PinVerifyRequest
 from src.app.services.mail import MailService

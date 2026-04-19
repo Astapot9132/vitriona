@@ -1,6 +1,3 @@
-import json
-from typing import Any
-
 import os
 import dotenv
 
@@ -9,8 +6,9 @@ dotenv.load_dotenv()
 
 
 APP_NAME = os.getenv("APP_NAME")
-DEV = bool(os.getenv("APP_NAME"))
+DEV = bool(os.getenv("DEV"))
 APP_URL = os.getenv("APP_URL")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 STORAGE_DIR = os.getenv("STORAGE_DIR")
 
 
@@ -20,8 +18,8 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 CSRF_SECRET = os.getenv("CSRF_SECRET")
 REFRESH_TOKEN_PEPPER = os.getenv("REFRESH_TOKEN_PEPPER")
 REFRESH_COOKIE_PATH = os.getenv("REFRESH_COOKIE_PATH")
-ACCESS_TOKEN_EXPIRE_SECONDS = os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS")
-REFRESH_TOKEN_EXPIRE_SECONDS = os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS")
+ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS"))
+REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS"))
 
 
 
@@ -41,11 +39,6 @@ SDB_URL = f"postgresql+psycopg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_H
 REDIS_URL = os.getenv("REDIS_URL")
 
 
-ADMINS_LIST = json.loads(os.getenv("ADMINS_LIST") or "[]")
-
-
-
-
 MAIL_FROM_ADDRESS = os.getenv("MAIL_FROM_ADDRESS")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME")
 MAIL_TRANSPORT = os.getenv("MAIL_TRANSPORT")
@@ -53,7 +46,7 @@ MAIL_TRANSPORT = os.getenv("MAIL_TRANSPORT")
 
 
 
-AFFISE_ENABLED = os.getenv("AFFISE_ENABLED")
+AFFISE_ENABLED = bool(os.getenv("AFFISE_ENABLED"))
 AFFISE_API_URL = os.getenv("AFFISE_API_URL")
 AFFISE_API_KEY = os.getenv("AFFISE_API_KEY")
 
@@ -62,4 +55,3 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_LOG_LEVEL = os.getenv("TELEGRAM_LOG_LEVEL")
 #
-

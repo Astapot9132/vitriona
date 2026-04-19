@@ -5,33 +5,34 @@ from typing import Any
 
 import httpx
 
-from src.app.core.config import Settings, get_settings
+from cfg import AFFISE_API_KEY, AFFISE_API_URL, AFFISE_ENABLED
 
 
 logger = logging.getLogger(__name__)
 
 
 class AffiseService:
-    def __init__(self, settings: Settings | None = None) -> None:
-        self.settings = settings or get_settings()
-        self.base_url = self.settings.affise_api_url.rstrip("/")
+    def __init__(self) -> None:
+        self.affise_enabled = AFFISE_ENABLED
+        self.affise_api_key = AFFISE_API_KEY
+        self.base_url = AFFISE_API_URL.rstrip("/")
 
     async def get_custom_fields(self) -> dict[str, Any]:
-        return await self._request("GET", "/3.0/admin/custom_fields", headers={"API-Key": self.settings.affise_api_key})
+        return await self._request("GET", "/3.0/admin/custom_fields", headers={"API-Key": self.affise_api_key})
 
     async def get_offers(self, page: int = 1, limit: int = 500) -> dict[str, Any]:
         return await self._request(
             "GET",
             "/3.0/offers",
             params={"page": page, "limit": limit},
-            headers={"API-Key": self.settings.affise_api_key},
+            headers={"API-Key": self.affise_api_key},
         )
 
     async def create_affiliate(self, data: dict[str, Any]) -> dict[str, Any]:
         return await self._request(
             "POST",
             "/3.0/admin/partner",
-            headers={"api-key": self.settings.affise_api_key},
+            headers={"api-key": self.affise_api_key},
             data=data,
         )
 

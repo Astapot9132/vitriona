@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import String, cast, delete, desc, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from di_container import api_uow, container
-from src.app.core.db import utcnow
+from di_container import Container as c, api_uow
 from src.app.core.dependencies import require_claims, require_onboarded, require_onboarded_and_csrf, require_user, require_user_and_csrf
-from src.app.core.security import generate_random_password
 from src.app.schemas.auth import AuthUser, JWTClaims
 from src.app.schemas.client import (
     DomainCreateRequest,
@@ -20,6 +22,7 @@ from src.app.schemas.client import (
 from src.app.services.affise import AffiseService
 from src.app.services.geoip import GeoIpService
 from src.app.services.landing import LandingService
+from src.app.services.security import SecurityService
 from src.infrastructure.models.domain import Domain
 from src.infrastructure.models.partner_offer import PartnerOffer
 from src.infrastructure.models.showcase import Showcase
@@ -45,7 +48,7 @@ def _auth_user_from_db(db_user: User, current_user: AuthUser) -> AuthUser:
         affise_id=db_user.affise_id,
         affise_api_key=db_user.affise_api_key,
         is_banned=db_user.is_banned,
-        is_admin=current_user.is_admin,
+        is_admin=db_user.is_admin,
         impersonating=current_user.impersonating,
     )
 
@@ -218,7 +221,7 @@ async def onboarding_show(
     if user.affise_password:
         return {"redirect": "/dashboard"}
 
-    db = uow.db
+    db = uow.session
     geoip = GeoIpService()
     affise = AffiseService()
     detected_country = await geoip.get_country_code(request.client.host if request.client else None)
@@ -228,14 +231,16 @@ async def onboarding_show(
 
 
 @router.post("/onboarding")
+@inject
 async def onboarding_complete(
     payload: OnboardingCompleteRequest,
     response: Response,
     user: AuthUser = Depends(require_user_and_csrf),
     claims: JWTClaims = Depends(require_claims),
     uow: UnitOfWork = Depends(api_uow),
+    sec: SecurityService = Depends(Provide[c.security_service]),
 ) -> dict:
-    password = generate_random_password()
+    password = sec.generate_random_password()
     affise_params: dict[str, str] = {
         "email": user.email,
         "login": user.email,
@@ -249,7 +254,7 @@ async def onboarding_complete(
 
     affise = AffiseService()
     try:
-        if affise.settings.affise_enabled:
+        if affise.affise_enabled:
             affise_response = await affise.create_affiliate(affise_params)
             partner = affise_response.get("partner") or {}
         else:
@@ -266,7 +271,6 @@ async def onboarding_complete(
     db_user.affise_id = partner.get("id")
     db_user.affise_api_key = partner.get("api_key")
     await uow.commit()
-    sec = container.security_service()
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
@@ -276,12 +280,14 @@ async def onboarding_complete(
 
 
 @router.patch("/profile/country")
+@inject
 async def update_country(
     payload: UpdateCountryRequest,
     response: Response,
     user: AuthUser = Depends(require_onboarded_and_csrf),
     claims: JWTClaims = Depends(require_claims),
     uow: UnitOfWork = Depends(api_uow),
+    sec: SecurityService = Depends(Provide[c.security_service]),
 ) -> dict:
     db_user = await uow.users.get_by_id(user.id)
     if not db_user:
@@ -289,7 +295,6 @@ async def update_country(
 
     db_user.affise_country = payload.country
     await uow.commit()
-    sec = container.security_service()
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
@@ -307,7 +312,7 @@ async def client_offers(
     country: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     page_size = 50
     stmt = select(PartnerOffer).where(PartnerOffer.user_id == user.id)
     if search:
@@ -353,11 +358,11 @@ async def client_offers_sync(
     if not user.affise_api_key:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="API-ключ Affise не найден.")
 
-    db = uow.db
+    db = uow.session
     affise = AffiseService()
     total = 0
     page = 1
-    now = utcnow()
+    now = datetime.now(timezone.utc)
     synced_ids: list[int] = []
 
     try:
@@ -446,7 +451,7 @@ async def showcases_index(
     user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     showcases = (
         await db.execute(select(Showcase).where(Showcase.user_id == user.id).order_by(Showcase.created_at.desc()))
     ).scalars().all()
@@ -486,7 +491,7 @@ async def showcase_edit(
     user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     showcase = (
         await db.execute(
             select(Showcase)
@@ -522,7 +527,7 @@ async def showcase_update(
     user: AuthUser = Depends(require_onboarded_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     showcase = (
         await db.execute(
             select(Showcase)
@@ -552,7 +557,7 @@ async def showcase_duplicate(
     user: AuthUser = Depends(require_onboarded_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
 
     showcase = (
         await db.execute(select(Showcase).where(Showcase.id == showcase_id, Showcase.user_id == user.id))
@@ -581,7 +586,7 @@ async def showcase_destroy(
     user: AuthUser = Depends(require_onboarded_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
 
     showcase = (
         await db.execute(select(Showcase).where(Showcase.id == showcase_id, Showcase.user_id == user.id))
@@ -617,7 +622,7 @@ async def domain_destroy(
     user: AuthUser = Depends(require_onboarded_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
 
     domain = (
         await db.execute(select(Domain).where(Domain.id == domain_id, Domain.user_id == user.id))

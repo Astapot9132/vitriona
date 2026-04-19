@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.core.config import Settings, get_settings
+from cfg import STORAGE_DIR
 from src.infrastructure.models.partner_offer import PartnerOffer
 from src.infrastructure.models.showcase import Showcase
 
@@ -177,11 +177,8 @@ def render_landing_html(config: dict, offers: list[PartnerOffer]) -> str:
 
 
 class LandingService:
-    def __init__(self, settings: Settings | None = None) -> None:
-        self.settings = settings or get_settings()
-
     def get_public_dir(self) -> Path:
-        return Path(self.settings.storage_dir).joinpath("public")
+        return Path(STORAGE_DIR).joinpath("public")
 
     def get_preview_url(self, showcase_id: int) -> str | None:
         path = self.get_public_dir().joinpath("landings", str(showcase_id), "index.html")

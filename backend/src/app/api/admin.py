@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from dependency_injector.wiring import Provide, inject
 from sqlalchemy import desc, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from di_container import api_uow, container
-from src.app.core.auth_sessions import create_auth_session
-from src.app.core.db import utcnow
+from di_container import Container as c, api_uow
 from src.app.core.dependencies import (
     get_current_session,
-    get_settings_dep,
     require_admin,
     require_admin_and_csrf,
 )
 from src.app.schemas.auth import AuthUser
 from src.app.services.affise import AffiseService
+from src.app.services.auth_session import AuthSessionService
+from src.app.services.security import SecurityService
 from src.infrastructure.models.offer import Offer
 from src.infrastructure.models.offer_source import OfferSource
 from src.infrastructure.models.session import AppSession
@@ -64,8 +66,21 @@ async def admin_root(user: AuthUser = Depends(require_admin)) -> dict:
 
 
 @router.get("/admins")
-async def admin_list(settings=Depends(get_settings_dep), user: AuthUser = Depends(require_admin)) -> dict:
-    return {"admins": settings.admins_list}
+async def admin_list(
+    user: AuthUser = Depends(require_admin),
+    uow: UnitOfWork = Depends(api_uow),
+) -> dict:
+    admins = (await uow.session.execute(select(User).where(User.is_admin.is_(True)).order_by(User.id.asc()))).scalars().all()
+    return {
+        "admins": [
+            {
+                "id": item.id,
+                "name": item.name,
+                "email": item.email,
+            }
+            for item in admins
+        ]
+    }
 
 
 @router.get("/offers")
@@ -80,7 +95,7 @@ async def admin_offers(
     dir: str = Query(default="desc"),
     page: int = Query(default=1, ge=1),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     page_size = 50
     sortable = {"id": Offer.id, "external_id": Offer.external_id, "title": Offer.title, "status": Offer.status, "cr": Offer.cr, "epc": Offer.epc, "synced_at": Offer.synced_at}
     stmt = select(Offer).join(OfferSource, Offer.source_id == OfferSource.id).options(selectinload(Offer.source))
@@ -150,7 +165,7 @@ async def admin_offer_show(
     user: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     offer = (
         await db.execute(select(Offer).where(Offer.id == offer_id).options(selectinload(Offer.source)))
     ).scalar_one_or_none()
@@ -164,7 +179,7 @@ async def admin_offers_sync(
     user: AuthUser = Depends(require_admin_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     sources = (await db.execute(select(OfferSource).where(OfferSource.enabled.is_(True)))).scalars().all()
     if not sources:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Нет активных источников для синхронизации.")
@@ -172,7 +187,7 @@ async def admin_offers_sync(
     affise = AffiseService()
     total = 0
     names: list[str] = []
-    now = utcnow()
+    now = datetime.now(timezone.utc)
 
     try:
         for source in sources:
@@ -261,13 +276,14 @@ async def admin_users(
     user: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    db = uow.db
+    db = uow.session
     stmt = (
         select(
             User.id,
             User.name,
             User.email,
             User.is_banned,
+            User.is_admin,
             func.count(Showcase.id).label("showcases_count"),
         )
         .outerjoin(Showcase, Showcase.user_id == User.id)
@@ -282,6 +298,7 @@ async def admin_users(
                 "name": row.name,
                 "email": row.email,
                 "is_banned": row.is_banned,
+                "is_admin": row.is_admin,
                 "showcases_count": row.showcases_count,
             }
             for row in rows
@@ -295,7 +312,6 @@ async def admin_ban_user(
     admin: AuthUser = Depends(require_admin_and_csrf),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
-    sec = container.security_service()
     target = await uow.users.get_by_id(user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -318,7 +334,36 @@ async def admin_unban_user(
     return {"success": True}
 
 
+@router.post("/users/{user_id}/make-admin")
+async def admin_make_admin(
+    user_id: int,
+    admin: AuthUser = Depends(require_admin_and_csrf),
+    uow: UnitOfWork = Depends(api_uow),
+) -> dict:
+    target = await uow.users.get_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    target.is_admin = True
+    await uow.commit()
+    return {"success": True}
+
+
+@router.post("/users/{user_id}/revoke-admin")
+async def admin_revoke_admin(
+    user_id: int,
+    admin: AuthUser = Depends(require_admin_and_csrf),
+    uow: UnitOfWork = Depends(api_uow),
+) -> dict:
+    target = await uow.users.get_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    target.is_admin = False
+    await uow.commit()
+    return {"success": True}
+
+
 @router.post("/users/{user_id}/impersonate")
+@inject
 async def admin_impersonate(
     user_id: int,
     request: Request,
@@ -326,7 +371,8 @@ async def admin_impersonate(
     admin: AuthUser = Depends(require_admin_and_csrf),
     session: AppSession | None = Depends(get_current_session),
     uow: UnitOfWork = Depends(api_uow),
-    settings=Depends(get_settings_dep),
+    sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
     if not target:
@@ -335,27 +381,28 @@ async def admin_impersonate(
     if session:
         await uow.sessions.delete(session)
 
-    await create_auth_session(uow, response, request, target, sec, settings, impersonator_admin_id=admin.id)
+    await auth_session.create_auth_session(uow, response, request, target, impersonator_admin_id=admin.id)
     return {"redirect": "/dashboard"}
 
 
 @router.post("/impersonate/leave")
+@inject
 async def admin_impersonate_leave(
     request: Request,
     response: Response,
     session: AppSession | None = Depends(get_current_session),
     uow: UnitOfWork = Depends(api_uow),
-    settings=Depends(get_settings_dep),
+    sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
     if not session or not session.impersonator_admin_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not impersonating")
 
-    sec = container.security_service()
     admin = await uow.users.get_by_id(session.impersonator_admin_id)
     if not admin:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
 
     await uow.sessions.delete(session)
 
-    await create_auth_session(uow, response, request, admin, sec, settings)
+    await auth_session.create_auth_session(uow, response, request, admin)
     return {"redirect": "/admin/users"}

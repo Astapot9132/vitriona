@@ -14,6 +14,7 @@ class User(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     affise_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     affise_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     affise_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

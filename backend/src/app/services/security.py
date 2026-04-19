@@ -12,8 +12,15 @@ from passlib.context import CryptContext
 from pydantic import ValidationError
 from starlette.responses import Response
 
-from cfg import CSRF_SECRET, JWT_SECRET, ACCESS_TOKEN_EXPIRE_SECONDS, REFRESH_TOKEN_EXPIRE_SECONDS, \
-    REFRESH_TOKEN_PEPPER, DEV, REFRESH_COOKIE_PATH
+from cfg import (
+    ACCESS_TOKEN_EXPIRE_SECONDS,
+    CSRF_SECRET,
+    DEV,
+    JWT_SECRET,
+    REFRESH_COOKIE_PATH,
+    REFRESH_TOKEN_EXPIRE_SECONDS,
+    REFRESH_TOKEN_PEPPER,
+)
 from src.app.schemas.auth import AuthUser, JWTClaims
 
 
@@ -21,13 +28,13 @@ class SecurityService:
     ACCESS_COOKIE = "access_token"
     REFRESH_COOKIE = "refresh_token"
     CSRF_COOKIE = "csrf_token"
-    CSRF_HEADER = "csrf_header"
+    CSRF_HEADER = "X-CSRF-Token"
 
-
-    PWD_CONTEXT = CryptContext(schemes=['bcrypt'],
-                               bcrypt__default_rounds=12,
-                               bcrypt__ident='2b'
-                               )
+    PWD_CONTEXT = CryptContext(
+        schemes=["bcrypt"],
+        bcrypt__default_rounds=12,
+        bcrypt__ident="2b",
+    )
 
     def __init__(self):
         self.CSRF_SERIALIZER = itsdangerous.URLSafeTimedSerializer(CSRF_SECRET)
@@ -92,10 +99,7 @@ class SecurityService:
         if not access_token:
             raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Authentication required")
 
-        claims = self.decode_token(access_token)
-        if claims.token_type != "access":
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail={"error": "token invalid"})
-        return claims
+        return self.decode_token(access_token)
 
     def require_csrf(self, request: Request) -> None:
         cookie_token = request.cookies.get(self.CSRF_COOKIE)
@@ -105,7 +109,7 @@ class SecurityService:
         if not secrets.compare_digest(cookie_token, header_token):
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="CSRF token mismatch")
         try:
-            self.CSRF_SERIALIZER.loads(cookie_token, max_age=self.settings.refresh_token_expire_seconds)
+            self.CSRF_SERIALIZER.loads(cookie_token, max_age=REFRESH_TOKEN_EXPIRE_SECONDS)
         except itsdangerous.BadSignature as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="CSRF token invalid") from exc
 
@@ -157,7 +161,6 @@ class SecurityService:
         )
         response.delete_cookie(self.CSRF_COOKIE, path="/", samesite="strict", secure=not DEV)
 
-
     @classmethod
     def hash_password(cls, value: str) -> str:
         return cls.PWD_CONTEXT.hash(value)
@@ -195,7 +198,3 @@ class SecurityService:
     @classmethod
     def generate_session_id(cls) -> str:
         return secrets.token_urlsafe(32)
-
-    @classmethod
-    def generate_csrf_secret(cls) -> str:
-        return secrets.token_urlsafe(24)

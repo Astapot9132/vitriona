@@ -4,24 +4,23 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from src.app.core.config import get_settings
+from cfg import ADB_URL, SDB_URL
 from src.app.core.db import Base
 import src.infrastructure.models  # noqa: F401
 
 
 config = context.config
-settings = get_settings()
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", ADB_URL)
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.sync_database_url,
+        url=SDB_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -56,4 +55,3 @@ else:
     import asyncio
 
     asyncio.run(run_migrations_online())
-

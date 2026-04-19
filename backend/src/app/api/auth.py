@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
+from cfg import DEV, REFRESH_TOKEN_EXPIRE_SECONDS
 from di_container import Container as c, api_uow
-from src.app.core.auth_sessions import (
-    create_auth_session,
-    get_session_by_refresh_cookie,
-    revoke_session_by_refresh_cookie,
-    rotate_session_credentials,
-)
-from src.app.core.dependencies import is_admin_email
 from src.app.core.rate_limit import rate_limiter
-from src.app.core.security import (
-    SecurityService,
-)
 from src.app.schemas.auth import PinSendRequest, PinVerifyRequest
+from src.app.services.auth_session import AuthSessionService
 from src.app.services.mail import MailService
+from src.app.services.security import SecurityService
 from src.infrastructure.models.pin_code import PinCode
 from src.infrastructure.models.user import User
 from src.modules.shared.unit_of_work import UnitOfWork
@@ -40,7 +33,7 @@ async def _get_user_by_email(uow: UnitOfWork, email: str) -> User | None:
     return await uow.users.get_by_email(email)
 
 
-async def _get_or_create_user(uow: UnitOfWork, email: str) -> User:
+async def _get_or_create_user(uow: UnitOfWork, email: str, sec: SecurityService) -> User:
     existing_user = await _get_user_by_email(uow, email)
     if existing_user:
         return existing_user
@@ -48,7 +41,7 @@ async def _get_or_create_user(uow: UnitOfWork, email: str) -> User:
     return await uow.users.get_or_create(
         email=email,
         name=email,
-        password_hash=hash_password(generate_random_password()),
+        password_hash=sec.hash_password(sec.generate_random_password()),
     )
 
 
@@ -57,16 +50,16 @@ async def _send_pin(
     request: Request,
     uow: UnitOfWork,
     response: Response,
-    settings: Settings,
     mailer: MailService,
     sec: SecurityService,
+    auth_session: AuthSessionService,
     admin_only: bool,
 ) -> dict:
     email = payload.email.lower()
-    if admin_only and not is_admin_email(email, settings):
+    user = await _get_user_by_email(uow, email)
+    if admin_only and (not user or not user.is_admin):
         return {"success": True}
 
-    user = await _get_user_by_email(uow, email)
     if user and user.is_banned and not admin_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ваш аккаунт заблокирован.")
 
@@ -80,27 +73,27 @@ async def _send_pin(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Слишком много попыток. Повторите через {retry_after} с.",
-        )
+    )
 
-    if admin_only and settings.is_local_like:
-        user = await _get_or_create_user(uow, email)
-        await create_auth_session(uow, response, request, user, sec, settings)
+    if admin_only and DEV:
+        user = await _get_or_create_user(uow, email, sec)
+        await auth_session.create_auth_session(uow, response, request, user)
         return {"redirect": _redirect_path(admin_only=True)}
 
     await uow.pin_codes.delete_by_email(email)
-    pin = generate_pin()
+    pin = sec.generate_pin()
     await uow.pin_codes.add(
         PinCode(
             email=email,
-            code_hash=hash_pin(pin),
+            code_hash=sec.hash_pin(pin),
             ip_address=request.client.host if request.client else None,
             attempts=0,
-            expires_at=utcnow() + timedelta(minutes=PIN_TTL_MINUTES),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=PIN_TTL_MINUTES),
         )
     )
     await uow.commit()
 
-    if settings.is_local_like:
+    if DEV:
         return {"success": True, "debug_pin": pin}
 
     await mailer.send_pin(email, pin)
@@ -112,22 +105,22 @@ async def _verify_pin(
     request: Request,
     response: Response,
     uow: UnitOfWork,
-    settings: Settings,
     sec: SecurityService,
+    auth_session: AuthSessionService,
     admin_only: bool,
 ) -> dict:
     email = payload.email.lower()
     pin = payload.pin
 
-    if admin_only and not is_admin_email(email, settings):
+    user = await _get_user_by_email(uow, email)
+    if admin_only and (not user or not user.is_admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ запрещён.")
 
-    user = await _get_user_by_email(uow, email)
     if user and user.is_banned and not admin_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ваш аккаунт заблокирован.")
 
-    if not settings.is_local_like or admin_only:
-        record = await uow.pin_codes.get_latest_active(email, utcnow(), MAX_ATTEMPTS)
+    if not DEV or admin_only:
+        record = await uow.pin_codes.get_latest_active(email, datetime.now(timezone.utc), MAX_ATTEMPTS)
 
         if not record:
             raise HTTPException(
@@ -138,7 +131,7 @@ async def _verify_pin(
         record.attempts += 1
         await uow.flush()
 
-        if not verify_pin(pin, record.code_hash):
+        if not sec.verify_pin(pin, record.code_hash):
             attempts_left = MAX_ATTEMPTS - record.attempts
             if attempts_left <= 0:
                 await uow.pin_codes.delete(record)
@@ -156,9 +149,9 @@ async def _verify_pin(
 
         await uow.pin_codes.delete(record)
 
-    user = await _get_or_create_user(uow, email)
+    user = await _get_or_create_user(uow, email, sec)
 
-    await create_auth_session(uow, response, request, user, sec, settings)
+    await auth_session.create_auth_session(uow, response, request, user)
     return {"redirect": _redirect_path(admin_only)}
 
 
@@ -180,10 +173,11 @@ async def client_send_pin(
     request: Request,
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
-    settings: Settings = Depends(get_settings_dep),
+    mailer: MailService = Depends(Provide[c.mail_service]),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    return await _send_pin(payload, request, uow, response, settings, MailService(settings), sec, admin_only=False)
+    return await _send_pin(payload, request, uow, response, mailer, sec, auth_session, admin_only=False)
 
 
 @router.post("/client/verify-pin")
@@ -193,10 +187,10 @@ async def client_verify_pin(
     request: Request,
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
-    settings: Settings = Depends(get_settings_dep),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    return await _verify_pin(payload, request, response, uow, settings, sec, admin_only=False)
+    return await _verify_pin(payload, request, response, uow, sec, auth_session, admin_only=False)
 
 
 @router.post("/admin/login/send-pin")
@@ -206,10 +200,11 @@ async def admin_send_pin(
     request: Request,
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
-    settings: Settings = Depends(get_settings_dep),
+    mailer: MailService = Depends(Provide[c.mail_service]),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    return await _send_pin(payload, request, uow, response, settings, MailService(settings), sec, admin_only=True)
+    return await _send_pin(payload, request, uow, response, mailer, sec, auth_session, admin_only=True)
 
 
 @router.post("/admin/login/verify-pin")
@@ -219,10 +214,10 @@ async def admin_verify_pin(
     request: Request,
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
-    settings: Settings = Depends(get_settings_dep),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    return await _verify_pin(payload, request, response, uow, settings, sec, admin_only=True)
+    return await _verify_pin(payload, request, response, uow, sec, auth_session, admin_only=True)
 
 
 @router.post("/refresh")
@@ -231,8 +226,8 @@ async def refresh(
     request: Request,
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
-    settings: Settings = Depends(get_settings_dep),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
     access_token = request.cookies.get(sec.ACCESS_COOKIE)
     refresh_token = request.cookies.get(sec.REFRESH_COOKIE)
@@ -242,20 +237,17 @@ async def refresh(
     access_claims = sec.decode_token(access_token, options={"verify_exp": False})
     refresh_claims = sec.decode_token(refresh_token)
 
-    if access_claims.token_type != "access" or refresh_claims.token_type != "refresh":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "not auth"})
-
     if (
         access_claims.user_id != refresh_claims.user_id
         or access_claims.session_id != refresh_claims.session_id
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "not auth"})
 
-    session = await get_session_by_refresh_cookie(uow, request, sec, verify_exp=True)
+    session = await auth_session.get_session_by_refresh_cookie(uow, request, verify_exp=True)
     if not session:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "not auth"})
 
-    rotate_session_credentials(response, session, session.user, sec, settings, settings.refresh_token_expire_seconds)
+    auth_session.rotate_session_credentials(response, session, session.user, REFRESH_TOKEN_EXPIRE_SECONDS)
     await uow.commit()
     return {}
 
@@ -267,8 +259,9 @@ async def client_logout(
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    await revoke_session_by_refresh_cookie(uow, request, sec)
+    await auth_session.revoke_session_by_refresh_cookie(uow, request)
     sec.clear_auth_cookies(response)
     return {"redirect": "/client"}
 
@@ -280,7 +273,8 @@ async def admin_logout(
     response: Response,
     uow: UnitOfWork = Depends(api_uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
-    await revoke_session_by_refresh_cookie(uow, request, sec)
+    await auth_session.revoke_session_by_refresh_cookie(uow, request)
     sec.clear_auth_cookies(response)
     return {"redirect": "/admin"}

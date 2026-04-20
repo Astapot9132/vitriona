@@ -5,18 +5,10 @@ from cfg import ADB_URL
 from src.app.services.affise import AffiseService
 from src.app.services.auth_session import AuthSessionService
 from src.app.services.crypto import CryptoService
-from src.app.services.geoip import GeoIpService
 from src.app.services.landing import LandingService
 from src.app.services.mail import MailService
 from src.app.services.security import SecurityService
 from src.modules.shared.unit_of_work import UnitOfWork
-
-
-async def api_uow():
-    uow = container.uow()
-    async with uow:
-        yield uow
-
 
 class Container(containers.DeclarativeContainer):
     api_engine = providers.Singleton(
@@ -38,7 +30,6 @@ class Container(containers.DeclarativeContainer):
     mail_service = providers.Singleton(MailService)
     auth_session_service = providers.Singleton(AuthSessionService, sec=security_service)
     affise_service = providers.Singleton(AffiseService)
-    geoip_service = providers.Singleton(GeoIpService)
     landing_service = providers.Singleton(LandingService)
 
 

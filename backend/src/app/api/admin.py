@@ -8,10 +8,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from di_container import Container as c, api_uow
+from di_container import Container as c
 from src.app.core.dependencies import (
     get_current_session,
     require_admin,
+    uow,
 )
 from src.app.schemas.auth import AuthUser
 from src.app.services.affise import AffiseService
@@ -67,7 +68,7 @@ async def admin_root(user: AuthUser = Depends(require_admin)) -> dict:
 @router.get("/admins")
 async def admin_list(
     user: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     admins = (await uow.session.execute(select(User).where(User.is_admin.is_(True)).order_by(User.id.asc()))).scalars().all()
     return {
@@ -85,7 +86,7 @@ async def admin_list(
 @router.get("/offers")
 async def admin_offers(
     user: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     search: str | None = Query(default=None),
     category: str | None = Query(default=None),
     status_value: str | None = Query(default=None, alias="status"),
@@ -162,7 +163,7 @@ async def admin_offers(
 async def admin_offer_show(
     offer_id: int,
     user: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
     offer = (
@@ -177,7 +178,7 @@ async def admin_offer_show(
 @inject
 async def admin_offers_sync(
     user: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     affise: AffiseService = Depends(Provide[c.affise_service]),
 ) -> dict:
     db = uow.session
@@ -274,7 +275,7 @@ async def admin_offers_sync(
 @router.get("/users")
 async def admin_users(
     user: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
     stmt = (
@@ -310,7 +311,7 @@ async def admin_users(
 async def admin_ban_user(
     user_id: int,
     admin: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
     if not target:
@@ -324,7 +325,7 @@ async def admin_ban_user(
 async def admin_unban_user(
     user_id: int,
     admin: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
     if not target:
@@ -338,7 +339,7 @@ async def admin_unban_user(
 async def admin_make_admin(
     user_id: int,
     admin: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
     if not target:
@@ -352,7 +353,7 @@ async def admin_make_admin(
 async def admin_revoke_admin(
     user_id: int,
     admin: AuthUser = Depends(require_admin),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
     if not target:
@@ -370,7 +371,7 @@ async def admin_impersonate(
     response: Response,
     admin: AuthUser = Depends(require_admin),
     session: AppSession | None = Depends(get_current_session),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
@@ -391,7 +392,7 @@ async def admin_impersonate_leave(
     request: Request,
     response: Response,
     session: AppSession | None = Depends(get_current_session),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:

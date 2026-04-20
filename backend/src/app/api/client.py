@@ -7,10 +7,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from di_container import Container as c, api_uow
-from src.app.core.dependencies import require_claims, require_not_banned, require_onboarded, require_user
+from di_container import Container as c
+from src.app.core.dependencies import require_claims, require_not_banned, require_onboarded, require_user, uow
 from src.app.schemas.auth import AuthUser, JWTClaims
 from src.app.schemas.client import (
     DomainCreateRequest,
@@ -21,7 +21,6 @@ from src.app.schemas.client import (
 )
 from src.app.services.affise import AffiseService
 from src.app.services.crypto import CryptoService
-from src.app.services.geoip import GeoIpService
 from src.app.services.landing import LandingService
 from src.app.services.security import SecurityService
 from src.infrastructure.models.domain import Domain
@@ -222,20 +221,17 @@ async def dashboard(user: AuthUser = Depends(require_onboarded)) -> dict:
 @router.get("/onboarding")
 @inject
 async def onboarding_show(
-    request: Request,
     user: AuthUser = Depends(require_user),
-    uow: UnitOfWork = Depends(api_uow),
-    geoip: GeoIpService = Depends(Provide[c.geoip_service]),
+    uow: UnitOfWork = Depends(uow),
     affise: AffiseService = Depends(Provide[c.affise_service]),
 ) -> dict:
     if user.is_onboarded:
         return {"redirect": "/dashboard"}
 
     db = uow.session
-    detected_country = await geoip.get_country_code(request.client.host if request.client else None)
     verticals = await _get_verticals(db)
     custom_fields = await _get_custom_fields(verticals, affise)
-    return {"detected_country": detected_country, "custom_fields": custom_fields}
+    return {"detected_country": None, "custom_fields": custom_fields}
 
 
 @router.post("/onboarding")
@@ -245,7 +241,7 @@ async def onboarding_complete(
     response: Response,
     user: AuthUser = Depends(require_not_banned),
     claims: JWTClaims = Depends(require_claims),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     crypto: CryptoService = Depends(Provide[c.crypto_service]),
     affise: AffiseService = Depends(Provide[c.affise_service]),
@@ -292,7 +288,7 @@ async def update_country(
     response: Response,
     user: AuthUser = Depends(require_onboarded),
     claims: JWTClaims = Depends(require_claims),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
 ) -> dict:
     await uow.users.update_affise_country(user.id, affise_country=payload.country)
@@ -310,7 +306,7 @@ async def update_country(
 @inject
 async def reveal_affise_password(
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     crypto: CryptoService = Depends(Provide[c.crypto_service]),
 ) -> dict:
     db_user = await _load_user_or_404(uow, user.id)
@@ -323,7 +319,7 @@ async def reveal_affise_password(
 @router.get("/offers")
 async def client_offers(
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     search: str | None = Query(default=None),
     category: str | None = Query(default=None),
     country: str | None = Query(default=None),
@@ -372,7 +368,7 @@ async def client_offers(
 @inject
 async def client_offers_sync(
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     affise: AffiseService = Depends(Provide[c.affise_service]),
     crypto: CryptoService = Depends(Provide[c.crypto_service]),
 ) -> dict:
@@ -471,7 +467,7 @@ async def client_offers_sync(
 @router.get("/showcases")
 async def showcases_index(
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
     showcases = (
@@ -491,7 +487,7 @@ async def showcases_index(
 async def showcase_store(
     payload: ShowcaseCreateRequest,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     showcase = Showcase(
         user_id=user.id,
@@ -512,7 +508,7 @@ async def showcase_store(
 async def showcase_edit(
     showcase_id: int,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     landing: LandingService = Depends(Provide[c.landing_service]),
 ) -> dict:
     db = uow.session
@@ -548,7 +544,7 @@ async def showcase_update(
     showcase_id: int,
     payload: ShowcaseUpdateRequest,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     landing: LandingService = Depends(Provide[c.landing_service]),
 ) -> dict:
     db = uow.session
@@ -580,7 +576,7 @@ async def showcase_update(
 async def showcase_duplicate(
     showcase_id: int,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
 
@@ -609,7 +605,7 @@ async def showcase_duplicate(
 async def showcase_destroy(
     showcase_id: int,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
 
@@ -627,7 +623,7 @@ async def showcase_destroy(
 async def domain_store(
     payload: DomainCreateRequest,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     domain = Domain(
         user_id=user.id,
@@ -645,7 +641,7 @@ async def domain_store(
 async def domain_destroy(
     domain_id: int,
     user: AuthUser = Depends(require_onboarded),
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
 ) -> dict:
     db = uow.session
 

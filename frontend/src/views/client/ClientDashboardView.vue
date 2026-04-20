@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const country = ref(auth.user?.affise_country || '')
 const copied = ref(false)
+const copyLoading = ref(false)
 const revealLoading = ref(false)
 const revealedPassword = ref('')
 const saving = ref(false)
@@ -16,23 +17,40 @@ const saved = ref(false)
 const error = ref('')
 const revealError = ref('')
 
-async function copyPassword() {
-  if (!revealedPassword.value) return
-  await navigator.clipboard.writeText(revealedPassword.value)
-  copied.value = true
-  window.setTimeout(() => { copied.value = false }, 2000)
-}
-
-async function revealPassword() {
+async function fetchPassword() {
   revealLoading.value = true
   revealError.value = ''
   try {
     const { data } = await api.post('/dashboard/affise-password')
-    revealedPassword.value = data.password || ''
+    return data.password || ''
   } catch (err) {
     revealError.value = err.response?.data?.detail || 'Не удалось получить пароль'
+    return ''
   } finally {
     revealLoading.value = false
+  }
+}
+
+async function togglePassword() {
+  if (revealedPassword.value) {
+    revealedPassword.value = ''
+    revealError.value = ''
+    return
+  }
+  revealedPassword.value = await fetchPassword()
+}
+
+async function copyPassword() {
+  copyLoading.value = true
+  revealError.value = ''
+  try {
+    const password = revealedPassword.value || await fetchPassword()
+    if (!password) return
+    await navigator.clipboard.writeText(password)
+    copied.value = true
+    window.setTimeout(() => { copied.value = false }, 1200)
+  } finally {
+    copyLoading.value = false
   }
 }
 
@@ -66,11 +84,33 @@ async function saveCountry() {
           <label class="text-xs text-muted-foreground">Пароль</label>
           <div class="flex items-center gap-2">
             <input :value="revealedPassword || '••••••••••'" readonly class="input-base flex-1 font-mono" />
-            <button type="button" class="btn-outline" :disabled="revealLoading" @click="revealPassword">
-              {{ revealLoading ? 'Загрузка...' : revealedPassword ? 'Обновить' : 'Показать пароль' }}
+            <button
+              type="button"
+              class="btn-outline inline-flex min-w-[148px] justify-center"
+              :disabled="revealLoading || copyLoading"
+              @click="togglePassword"
+            >
+              {{ revealLoading ? 'Загрузка...' : revealedPassword ? 'Скрыть' : 'Показать пароль' }}
             </button>
-            <button type="button" class="btn-outline" :disabled="!revealedPassword" @click="copyPassword">
-              {{ copied ? 'Скопировано' : 'Копировать' }}
+            <button
+              type="button"
+              class="btn-outline inline-flex min-w-[116px] justify-center"
+              :disabled="copyLoading || revealLoading"
+              @click="copyPassword"
+            >
+              <svg
+                v-if="copied"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                class="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <span v-else>{{ copyLoading ? 'Загрузка...' : 'Копировать' }}</span>
             </button>
           </div>
           <p v-if="revealError" class="text-xs text-destructive">{{ revealError }}</p>

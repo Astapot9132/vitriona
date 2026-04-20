@@ -6,7 +6,8 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from cfg import DEV, REFRESH_TOKEN_EXPIRE_SECONDS
-from di_container import Container as c, api_uow
+from di_container import Container as c
+from src.app.core.dependencies import uow
 from src.app.core.rate_limit import rate_limiter
 from src.app.schemas.auth import PinSendRequest, PinVerifyRequest
 from src.app.services.auth_session import AuthSessionService
@@ -172,7 +173,7 @@ async def client_send_pin(
     payload: PinSendRequest,
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     mailer: MailService = Depends(Provide[c.mail_service]),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
@@ -186,7 +187,7 @@ async def client_verify_pin(
     payload: PinVerifyRequest,
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
@@ -199,7 +200,7 @@ async def admin_send_pin(
     payload: PinSendRequest,
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     mailer: MailService = Depends(Provide[c.mail_service]),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
@@ -213,7 +214,7 @@ async def admin_verify_pin(
     payload: PinVerifyRequest,
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
@@ -225,7 +226,7 @@ async def admin_verify_pin(
 async def refresh(
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
@@ -257,7 +258,7 @@ async def refresh(
 async def client_logout(
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:
@@ -271,7 +272,7 @@ async def client_logout(
 async def admin_logout(
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> dict:

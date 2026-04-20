@@ -3,12 +3,20 @@ from __future__ import annotations
 from dependency_injector.wiring import Provide, inject
 from fastapi import Depends, HTTPException, Request, Response, status
 
-from di_container import api_uow, Container as c
+from di_container import Container as c
 from src.app.schemas.auth import AuthUser, JWTClaims
 from src.app.services.auth_session import AuthSessionService
 from src.app.services.security import SecurityService
 from src.infrastructure.models.session import AppSession
 from src.modules.shared.unit_of_work import UnitOfWork
+
+
+@inject
+async def uow(
+    uow: UnitOfWork = Depends(Provide[c.uow]),
+):
+    async with uow:
+        yield uow
 
 
 @inject
@@ -28,7 +36,7 @@ async def get_current_claims(
 async def get_current_session(
     request: Request,
     response: Response,
-    uow: UnitOfWork = Depends(api_uow),
+    uow: UnitOfWork = Depends(uow),
     claims: JWTClaims | None = Depends(get_current_claims),
     auth_session: AuthSessionService = Depends(Provide[c.auth_session_service]),
 ) -> AppSession | None:

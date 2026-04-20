@@ -28,18 +28,16 @@ class AuthUser(BaseModel):
     id: int
     name: str
     email: str
-    affise_password: str | None = None
     affise_country: str | None = None
     affise_id: int | None = None
-    affise_api_key: str | None = None
+    is_onboarded: bool = False
     is_banned: bool = False
     is_admin: bool = False
     impersonating: bool = False
 
 
-
 class JWTClaims(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     user_id: int
     session_id: str = Field(alias="sid")
@@ -49,7 +47,7 @@ class JWTClaims(BaseModel):
     affise_password: str | None = None
     affise_country: str | None = None
     affise_id: int | None = None
-    affise_api_key: str | None = None
+    is_onboarded: bool = False
     is_banned: bool = False
     is_admin: bool = False
     impersonating: bool = False
@@ -59,10 +57,9 @@ class JWTClaims(BaseModel):
             id=self.user_id,
             name=self.name or "",
             email=self.email or "",
-            affise_password=self.affise_password,
             affise_country=self.affise_country,
             affise_id=self.affise_id,
-            affise_api_key=self.affise_api_key,
+            is_onboarded=bool(self.is_onboarded or self.affise_password),
             is_banned=self.is_banned,
             is_admin=self.is_admin,
             impersonating=self.impersonating,

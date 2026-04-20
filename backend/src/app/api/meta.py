@@ -21,9 +21,9 @@ async def bootstrap(context: dict = Depends(maybe_user_context)) -> dict:
                     "id": user.id,
                     "name": user.name,
                     "email": user.email,
-                    "affise_password": user.affise_password,
                     "affise_country": user.affise_country,
                     "affise_id": user.affise_id,
+                    "is_onboarded": user.is_onboarded,
                 }
                 if user
                 else None

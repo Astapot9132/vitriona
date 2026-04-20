@@ -10,7 +10,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from di_container import Container as c, api_uow
-from src.app.core.dependencies import require_claims, require_onboarded, require_onboarded_and_csrf, require_user, require_user_and_csrf
+from src.app.core.dependencies import require_claims, require_not_banned, require_onboarded, require_user
 from src.app.schemas.auth import AuthUser, JWTClaims
 from src.app.schemas.client import (
     DomainCreateRequest,
@@ -20,6 +20,7 @@ from src.app.schemas.client import (
     UpdateCountryRequest,
 )
 from src.app.services.affise import AffiseService
+from src.app.services.crypto import CryptoService
 from src.app.services.geoip import GeoIpService
 from src.app.services.landing import LandingService
 from src.app.services.security import SecurityService
@@ -43,10 +44,9 @@ def _auth_user_from_db(db_user: User, current_user: AuthUser) -> AuthUser:
         id=db_user.id,
         name=db_user.name,
         email=db_user.email,
-        affise_password=db_user.affise_password,
         affise_country=db_user.affise_country,
         affise_id=db_user.affise_id,
-        affise_api_key=db_user.affise_api_key,
+        is_onboarded=bool(db_user.affise_password),
         is_banned=db_user.is_banned,
         is_admin=db_user.is_admin,
         impersonating=current_user.impersonating,
@@ -54,14 +54,14 @@ def _auth_user_from_db(db_user: User, current_user: AuthUser) -> AuthUser:
 
 
 def _serialize_user(user: AuthUser | User) -> dict:
+    is_onboarded = user.is_onboarded if isinstance(user, AuthUser) else bool(user.affise_password)
     return {
         "id": user.id,
         "name": user.name,
         "email": user.email,
-        "affise_password": user.affise_password,
         "affise_country": user.affise_country,
         "affise_id": user.affise_id,
-        "affise_api_key": user.affise_api_key,
+        "is_onboarded": is_onboarded,
         "is_banned": user.is_banned,
     }
 
@@ -207,23 +207,31 @@ async def _get_partner_countries(db: AsyncSession, user_id: int) -> list[str]:
     return [row.value for row in result]
 
 
+async def _load_user_or_404(uow: UnitOfWork, user_id: int) -> User:
+    db_user = await uow.users.get_by_id(user_id)
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return db_user
+
+
 @router.get("/dashboard")
 async def dashboard(user: AuthUser = Depends(require_onboarded)) -> dict:
     return {"user": _serialize_user(user)}
 
 
 @router.get("/onboarding")
+@inject
 async def onboarding_show(
     request: Request,
     user: AuthUser = Depends(require_user),
     uow: UnitOfWork = Depends(api_uow),
+    geoip: GeoIpService = Depends(Provide[c.geoip_service]),
+    affise: AffiseService = Depends(Provide[c.affise_service]),
 ) -> dict:
-    if user.affise_password:
+    if user.is_onboarded:
         return {"redirect": "/dashboard"}
 
     db = uow.session
-    geoip = GeoIpService()
-    affise = AffiseService()
     detected_country = await geoip.get_country_code(request.client.host if request.client else None)
     verticals = await _get_verticals(db)
     custom_fields = await _get_custom_fields(verticals, affise)
@@ -235,10 +243,12 @@ async def onboarding_show(
 async def onboarding_complete(
     payload: OnboardingCompleteRequest,
     response: Response,
-    user: AuthUser = Depends(require_user_and_csrf),
+    user: AuthUser = Depends(require_not_banned),
     claims: JWTClaims = Depends(require_claims),
     uow: UnitOfWork = Depends(api_uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
+    crypto: CryptoService = Depends(Provide[c.crypto_service]),
+    affise: AffiseService = Depends(Provide[c.affise_service]),
 ) -> dict:
     password = sec.generate_random_password()
     affise_params: dict[str, str] = {
@@ -252,31 +262,21 @@ async def onboarding_complete(
         affise_params[f"custom_fields[{field_id}]"] = ", ".join(value) if isinstance(value, list) else str(value)
     affise_params["custom_fields[2]"] = payload.country
 
-    affise = AffiseService()
     try:
-        if affise.affise_enabled:
-            affise_response = await affise.create_affiliate(affise_params)
-            partner = affise_response.get("partner") or {}
-        else:
-            partner = {}
+        affise_response = await affise.create_affiliate(affise_params)
+        partner = affise_response.get("partner") or {}
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Не удалось создать аккаунт в Affise: {exc}") from exc
 
-    db_user = await uow.users.get_by_id(user.id)
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
     await uow.users.update_affise_profile(
         user.id,
-        affise_password=password,
+        affise_password=crypto.encrypt_text(password),
         affise_country=payload.country,
         affise_id=partner.get("id"),
-        affise_api_key=partner.get("api_key"),
+        affise_api_key=crypto.encrypt_text(partner.get("api_key")),
     )
     await uow.commit()
-    db_user = await uow.users.get_by_id(user.id)
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    db_user = await _load_user_or_404(uow, user.id)
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
@@ -290,26 +290,34 @@ async def onboarding_complete(
 async def update_country(
     payload: UpdateCountryRequest,
     response: Response,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     claims: JWTClaims = Depends(require_claims),
     uow: UnitOfWork = Depends(api_uow),
     sec: SecurityService = Depends(Provide[c.security_service]),
 ) -> dict:
-    db_user = await uow.users.get_by_id(user.id)
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
     await uow.users.update_affise_country(user.id, affise_country=payload.country)
     await uow.commit()
-    db_user = await uow.users.get_by_id(user.id)
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    db_user = await _load_user_or_404(uow, user.id)
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
         claims.session_id,
     )
     return {"success": True}
+
+
+@router.post("/dashboard/affise-password")
+@inject
+async def reveal_affise_password(
+    user: AuthUser = Depends(require_onboarded),
+    uow: UnitOfWork = Depends(api_uow),
+    crypto: CryptoService = Depends(Provide[c.crypto_service]),
+) -> dict:
+    db_user = await _load_user_or_404(uow, user.id)
+    password = crypto.decrypt_text(db_user.affise_password)
+    if not password:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пароль Affise не найден.")
+    return {"password": password}
 
 
 @router.get("/offers")
@@ -322,6 +330,7 @@ async def client_offers(
     page: int = Query(default=1, ge=1),
 ) -> dict:
     db = uow.session
+    db_user = await _load_user_or_404(uow, user.id)
     page_size = 50
     stmt = select(PartnerOffer).where(PartnerOffer.user_id == user.id)
     if search:
@@ -355,20 +364,24 @@ async def client_offers(
         "categories": await _get_partner_categories(db, user.id),
         "countries": await _get_partner_countries(db, user.id),
         "synced_at": synced_at,
-        "has_api_key": bool(user.affise_api_key),
+        "has_api_key": bool(db_user.affise_api_key),
     }
 
 
 @router.post("/offers/sync")
+@inject
 async def client_offers_sync(
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
+    affise: AffiseService = Depends(Provide[c.affise_service]),
+    crypto: CryptoService = Depends(Provide[c.crypto_service]),
 ) -> dict:
-    if not user.affise_api_key:
+    db_user = await _load_user_or_404(uow, user.id)
+    partner_api_key = crypto.decrypt_text(db_user.affise_api_key)
+    if not partner_api_key:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="API-ключ Affise не найден.")
 
     db = uow.session
-    affise = AffiseService()
     total = 0
     page = 1
     now = datetime.now(timezone.utc)
@@ -376,7 +389,7 @@ async def client_offers_sync(
 
     try:
         while True:
-            response = await affise.get_partner_offers(user.affise_api_key, page=page, limit=500)
+            response = await affise.get_partner_offers(partner_api_key, page=page, limit=500)
             offers = response.get("offers") or []
             if not offers:
                 break
@@ -477,7 +490,7 @@ async def showcases_index(
 @router.post("/showcases")
 async def showcase_store(
     payload: ShowcaseCreateRequest,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     showcase = Showcase(
@@ -495,10 +508,12 @@ async def showcase_store(
 
 
 @router.get("/showcases/{showcase_id}")
+@inject
 async def showcase_edit(
     showcase_id: int,
     user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
+    landing: LandingService = Depends(Provide[c.landing_service]),
 ) -> dict:
     db = uow.session
     showcase = (
@@ -518,8 +533,6 @@ async def showcase_edit(
             .order_by(Domain.created_at.desc())
         )
     ).scalars().all()
-
-    landing = LandingService()
     return {
         "showcase": _serialize_showcase(showcase),
         "offers": [_serialize_partner_offer(item) for item in showcase.user.partner_offers],
@@ -530,11 +543,13 @@ async def showcase_edit(
 
 
 @router.put("/showcases/{showcase_id}")
+@inject
 async def showcase_update(
     showcase_id: int,
     payload: ShowcaseUpdateRequest,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
+    landing: LandingService = Depends(Provide[c.landing_service]),
 ) -> dict:
     db = uow.session
     showcase = (
@@ -556,7 +571,7 @@ async def showcase_update(
 
     preview_url = None
     if "config" in update_data:
-        preview_url = await LandingService().generate(db, showcase)
+        preview_url = await landing.generate(showcase)
 
     return {"success": True, "showcase": _serialize_showcase(showcase), "previewUrl": preview_url}
 
@@ -564,7 +579,7 @@ async def showcase_update(
 @router.post("/showcases/{showcase_id}/duplicate")
 async def showcase_duplicate(
     showcase_id: int,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     db = uow.session
@@ -593,7 +608,7 @@ async def showcase_duplicate(
 @router.delete("/showcases/{showcase_id}")
 async def showcase_destroy(
     showcase_id: int,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     db = uow.session
@@ -611,7 +626,7 @@ async def showcase_destroy(
 @router.post("/domains")
 async def domain_store(
     payload: DomainCreateRequest,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     domain = Domain(
@@ -629,7 +644,7 @@ async def domain_store(
 @router.delete("/domains/{domain_id}")
 async def domain_destroy(
     domain_id: int,
-    user: AuthUser = Depends(require_onboarded_and_csrf),
+    user: AuthUser = Depends(require_onboarded),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     db = uow.session

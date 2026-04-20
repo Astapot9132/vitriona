@@ -76,40 +76,11 @@ async def require_admin(
 
 
 async def require_onboarded(user: AuthUser = Depends(require_not_banned)) -> AuthUser:
-    if not user.affise_password:
+    if not user.is_onboarded:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Onboarding required",
         )
-    return user
-
-
-@inject
-async def require_csrf(
-    request: Request,
-    sec: SecurityService = Depends(Provide[c.security_service]),
-) -> None:
-    sec.require_csrf(request)
-
-
-async def require_user_and_csrf(
-    _: None = Depends(require_csrf),
-    user: AuthUser = Depends(require_not_banned),
-) -> AuthUser:
-    return user
-
-
-async def require_admin_and_csrf(
-    _: None = Depends(require_csrf),
-    user: AuthUser = Depends(require_admin),
-) -> AuthUser:
-    return user
-
-
-async def require_onboarded_and_csrf(
-    _: None = Depends(require_csrf),
-    user: AuthUser = Depends(require_onboarded),
-) -> AuthUser:
     return user
 
 

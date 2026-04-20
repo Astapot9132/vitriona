@@ -12,7 +12,6 @@ from di_container import Container as c, api_uow
 from src.app.core.dependencies import (
     get_current_session,
     require_admin,
-    require_admin_and_csrf,
 )
 from src.app.schemas.auth import AuthUser
 from src.app.services.affise import AffiseService
@@ -175,16 +174,17 @@ async def admin_offer_show(
 
 
 @router.post("/offers/sync")
+@inject
 async def admin_offers_sync(
-    user: AuthUser = Depends(require_admin_and_csrf),
+    user: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
+    affise: AffiseService = Depends(Provide[c.affise_service]),
 ) -> dict:
     db = uow.session
     sources = (await db.execute(select(OfferSource).where(OfferSource.enabled.is_(True)))).scalars().all()
     if not sources:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Нет активных источников для синхронизации.")
 
-    affise = AffiseService()
     total = 0
     names: list[str] = []
     now = datetime.now(timezone.utc)
@@ -309,7 +309,7 @@ async def admin_users(
 @router.post("/users/{user_id}/ban")
 async def admin_ban_user(
     user_id: int,
-    admin: AuthUser = Depends(require_admin_and_csrf),
+    admin: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
@@ -323,7 +323,7 @@ async def admin_ban_user(
 @router.post("/users/{user_id}/unban")
 async def admin_unban_user(
     user_id: int,
-    admin: AuthUser = Depends(require_admin_and_csrf),
+    admin: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
@@ -337,7 +337,7 @@ async def admin_unban_user(
 @router.post("/users/{user_id}/make-admin")
 async def admin_make_admin(
     user_id: int,
-    admin: AuthUser = Depends(require_admin_and_csrf),
+    admin: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
@@ -351,7 +351,7 @@ async def admin_make_admin(
 @router.post("/users/{user_id}/revoke-admin")
 async def admin_revoke_admin(
     user_id: int,
-    admin: AuthUser = Depends(require_admin_and_csrf),
+    admin: AuthUser = Depends(require_admin),
     uow: UnitOfWork = Depends(api_uow),
 ) -> dict:
     target = await uow.users.get_by_id(user_id)
@@ -368,7 +368,7 @@ async def admin_impersonate(
     user_id: int,
     request: Request,
     response: Response,
-    admin: AuthUser = Depends(require_admin_and_csrf),
+    admin: AuthUser = Depends(require_admin),
     session: AppSession | None = Depends(get_current_session),
     uow: UnitOfWork = Depends(api_uow),
     sec: SecurityService = Depends(Provide[c.security_service]),

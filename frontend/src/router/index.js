@@ -51,17 +51,17 @@ router.beforeEach(async (to) => {
     if (!auth.user) {
       return '/client'
     }
-    if (to.meta.onboarded && !auth.user.affise_password) {
+    if (to.meta.onboarded && !auth.user.is_onboarded) {
       return '/onboarding'
     }
-    if (to.path === '/onboarding' && auth.user.affise_password) {
+    if (to.path === '/onboarding' && auth.user.is_onboarded) {
       return '/dashboard'
     }
     return true
   }
 
   if (to.meta.guest === 'client' && auth.user) {
-    return auth.user.affise_password ? '/dashboard' : '/onboarding'
+    return auth.user.is_onboarded ? '/dashboard' : '/onboarding'
   }
 
   if (to.meta.guest === 'admin' && auth.user && auth.isAdmin) {

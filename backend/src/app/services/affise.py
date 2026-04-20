@@ -15,12 +15,16 @@ class AffiseService:
     def __init__(self) -> None:
         self.affise_enabled = AFFISE_ENABLED
         self.affise_api_key = AFFISE_API_KEY
-        self.base_url = AFFISE_API_URL.rstrip("/")
+        self.base_url = (AFFISE_API_URL or "").rstrip("/")
 
     async def get_custom_fields(self) -> dict[str, Any]:
+        if not self.affise_enabled:
+            return {"fields": []}
         return await self._request("GET", "/3.0/admin/custom_fields", headers={"API-Key": self.affise_api_key})
 
     async def get_offers(self, page: int = 1, limit: int = 500) -> dict[str, Any]:
+        if not self.affise_enabled:
+            return {"status": 1, "offers": [], "pagination": {}}
         return await self._request(
             "GET",
             "/3.0/offers",
@@ -29,6 +33,8 @@ class AffiseService:
         )
 
     async def create_affiliate(self, data: dict[str, Any]) -> dict[str, Any]:
+        if not self.affise_enabled:
+            return {"partner": {}}
         return await self._request(
             "POST",
             "/3.0/admin/partner",
@@ -42,6 +48,8 @@ class AffiseService:
         page: int = 1,
         limit: int = 500,
     ) -> dict[str, Any]:
+        if not self.affise_enabled:
+            return {"status": 1, "offers": [], "pagination": {}}
         return await self._request(
             "GET",
             "/3.0/partner/offers",

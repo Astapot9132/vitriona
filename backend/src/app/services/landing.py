@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cfg import STORAGE_DIR
 from src.infrastructure.models.partner_offer import PartnerOffer
@@ -186,11 +185,11 @@ class LandingService:
             return f"/storage/landings/{showcase_id}/index.html"
         return None
 
-    async def generate(self, db: AsyncSession, showcase: Showcase) -> str:
+    async def generate(self, showcase: Showcase) -> str:
         offers = list(showcase.user.partner_offers)
         html = render_landing_html(showcase.config or {}, offers)
         target_dir = self.get_public_dir().joinpath("landings", str(showcase.id))
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir.joinpath("index.html")
-        target_path.write_text(html, encoding="utf-8")
+        await asyncio.to_thread(target_path.write_text, html, encoding="utf-8")
         return f"/storage/landings/{showcase.id}/index.html"

@@ -9,15 +9,31 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const country = ref(auth.user?.affise_country || '')
 const copied = ref(false)
+const revealLoading = ref(false)
+const revealedPassword = ref('')
 const saving = ref(false)
 const saved = ref(false)
 const error = ref('')
+const revealError = ref('')
 
 async function copyPassword() {
-  if (!auth.user?.affise_password) return
-  await navigator.clipboard.writeText(auth.user.affise_password)
+  if (!revealedPassword.value) return
+  await navigator.clipboard.writeText(revealedPassword.value)
   copied.value = true
   window.setTimeout(() => { copied.value = false }, 2000)
+}
+
+async function revealPassword() {
+  revealLoading.value = true
+  revealError.value = ''
+  try {
+    const { data } = await api.post('/dashboard/affise-password')
+    revealedPassword.value = data.password || ''
+  } catch (err) {
+    revealError.value = err.response?.data?.detail || 'Не удалось получить пароль'
+  } finally {
+    revealLoading.value = false
+  }
 }
 
 async function saveCountry() {
@@ -44,16 +60,20 @@ async function saveCountry() {
         <p class="mt-1 text-sm text-muted-foreground">Личный кабинет</p>
       </div>
 
-      <div v-if="auth.user?.affise_password" class="card-base space-y-4 p-5">
+      <div v-if="auth.user?.is_onboarded" class="card-base space-y-4 p-5">
         <h2 class="text-sm font-medium">Данные для Affise</h2>
         <div class="space-y-1">
           <label class="text-xs text-muted-foreground">Пароль</label>
           <div class="flex items-center gap-2">
-            <input :value="auth.user.affise_password" readonly class="input-base flex-1 font-mono" />
-            <button type="button" class="btn-outline" @click="copyPassword">
+            <input :value="revealedPassword || '••••••••••'" readonly class="input-base flex-1 font-mono" />
+            <button type="button" class="btn-outline" :disabled="revealLoading" @click="revealPassword">
+              {{ revealLoading ? 'Загрузка...' : revealedPassword ? 'Обновить' : 'Показать пароль' }}
+            </button>
+            <button type="button" class="btn-outline" :disabled="!revealedPassword" @click="copyPassword">
               {{ copied ? 'Скопировано' : 'Копировать' }}
             </button>
           </div>
+          <p v-if="revealError" class="text-xs text-destructive">{{ revealError }}</p>
         </div>
 
         <div class="space-y-1">

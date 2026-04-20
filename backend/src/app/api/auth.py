@@ -247,7 +247,7 @@ async def refresh(
     if not session:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "not auth"})
 
-    auth_session.rotate_session_credentials(response, session, session.user, REFRESH_TOKEN_EXPIRE_SECONDS)
+    await auth_session.rotate_session_credentials(uow, response, session, session.user, REFRESH_TOKEN_EXPIRE_SECONDS)
     await uow.commit()
     return {}
 

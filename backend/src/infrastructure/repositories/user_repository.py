@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.infrastructure.models.user import User
@@ -24,3 +24,44 @@ class UserRepository(SqlAlchemyRepository[User]):
         if not user:
             raise RuntimeError("Failed to load user after upsert")
         return user
+
+    async def set_banned(self, user_id: int, *, is_banned: bool) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(is_banned=is_banned)
+        )
+
+    async def set_admin(self, user_id: int, *, is_admin: bool) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(is_admin=is_admin)
+        )
+
+    async def update_affise_profile(
+        self,
+        user_id: int,
+        *,
+        affise_password: str,
+        affise_country: str,
+        affise_id: int | None,
+        affise_api_key: str | None,
+    ) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                affise_password=affise_password,
+                affise_country=affise_country,
+                affise_id=affise_id,
+                affise_api_key=affise_api_key,
+            )
+        )
+
+    async def update_affise_country(self, user_id: int, *, affise_country: str) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(affise_country=affise_country)
+        )

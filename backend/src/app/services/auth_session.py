@@ -30,12 +30,28 @@ class AuthSessionService:
             impersonating=bool(session.impersonator_admin_id),
         )
 
-    def _issue_session_cookies(self, response: Response, session: AppSession, auth_user: AuthUser) -> None:
+    async def _issue_session_cookies(
+        self,
+        uow: UnitOfWork,
+        response: Response,
+        session: AppSession,
+        auth_user: AuthUser,
+        *,
+        expires_at: datetime | None = None,
+    ) -> None:
         self.sec.set_access_token(response, auth_user, session.id)
         refresh_token = self.sec.create_refresh_token(session.user_id, session.id)
-        session.refresh_token_hash = self.sec.hash_refresh_token_for_db(refresh_token)
         self.sec.set_refresh_cookie(response, refresh_token)
         self.sec.set_csrf_cookie(response, self.sec.create_csrf_token())
+        refresh_token_hash = self.sec.hash_refresh_token_for_db(refresh_token)
+        if expires_at is None:
+            await uow.sessions.set_refresh_token_hash(session.id, refresh_token_hash=refresh_token_hash)
+            return
+        await uow.sessions.rotate_session(
+            session.id,
+            refresh_token_hash=refresh_token_hash,
+            expires_at=expires_at,
+        )
 
     async def get_session_by_refresh_cookie(
         self,
@@ -52,15 +68,34 @@ class AuthSessionService:
         try:
             claims = self.sec.decode_token(refresh_token, options=options)
         except HTTPException:
+            if not verify_exp:
+                return None
+            try:
+                claims = self.sec.decode_token(refresh_token, options={"verify_exp": False})
+            except HTTPException:
+                return None
+            session = await uow.sessions.get_by_refresh_claims(
+                claims.session_id,
+                claims.user_id,
+                self.sec.hash_refresh_token_for_db(refresh_token),
+            )
+            if session and not session.is_closed and session.expires_at <= datetime.now(timezone.utc):
+                await uow.sessions.close_session(session.id, reason="expired")
+                await uow.commit()
             return None
 
-        session = await uow.sessions.get_valid_by_refresh_claims(
+        session = await uow.sessions.get_by_refresh_claims(
             claims.session_id,
             claims.user_id,
             self.sec.hash_refresh_token_for_db(refresh_token),
-            datetime.now(timezone.utc),
         )
         if not session:
+            return None
+        if session.is_closed:
+            return None
+        if session.expires_at <= datetime.now(timezone.utc):
+            await uow.sessions.close_session(session.id, reason="expired")
+            await uow.commit()
             return None
 
         return session
@@ -73,11 +108,16 @@ class AuthSessionService:
         user: User,
         impersonator_admin_id: int | None = None,
     ) -> AppSession:
+        now = datetime.now(timezone.utc)
         session = AppSession(
             id=self.sec.generate_session_id(),
             user_id=user.id,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            is_closed=False,
+            closed_at=None,
+            close_reason=None,
+            last_seen_at=now,
             expires_at=self.sec.expires_at(REFRESH_TOKEN_EXPIRE_SECONDS),
             impersonator_admin_id=impersonator_admin_id,
         )
@@ -85,22 +125,29 @@ class AuthSessionService:
         await uow.flush()
 
         auth_user = self.build_auth_user(user, session)
-        self._issue_session_cookies(response, session, auth_user)
+        await self._issue_session_cookies(uow, response, session, auth_user)
 
         await uow.commit()
         await uow.refresh(session)
         return session
 
-    def rotate_session_credentials(
+    async def rotate_session_credentials(
         self,
+        uow: UnitOfWork,
         response: Response,
         session: AppSession,
         user: User,
         ttl_seconds: int,
     ) -> None:
-        session.expires_at = self.sec.expires_at(ttl_seconds)
+        expires_at = self.sec.expires_at(ttl_seconds)
         auth_user = self.build_auth_user(user, session)
-        self._issue_session_cookies(response, session, auth_user)
+        await self._issue_session_cookies(
+            uow,
+            response,
+            session,
+            auth_user,
+            expires_at=expires_at,
+        )
 
     async def revoke_session_by_refresh_cookie(
         self,
@@ -111,7 +158,7 @@ class AuthSessionService:
         if not session:
             return None
 
-        await uow.sessions.delete(session)
+        await uow.sessions.close_session(session.id, reason="logout")
         await uow.commit()
         return session
 
@@ -129,9 +176,12 @@ class AuthSessionService:
         if session.user_id != user_id:
             self.sec.clear_auth_cookies(response)
             return None
+        if session.is_closed:
+            self.sec.clear_auth_cookies(response)
+            return None
 
         if session.expires_at <= datetime.now(timezone.utc):
-            await uow.sessions.delete(session)
+            await uow.sessions.close_session(session.id, reason="expired")
             await uow.commit()
             self.sec.clear_auth_cookies(response)
             return None

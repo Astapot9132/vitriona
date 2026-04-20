@@ -17,18 +17,9 @@ const saved = ref(false)
 const error = ref('')
 const revealError = ref('')
 
-async function fetchPassword() {
-  revealLoading.value = true
-  revealError.value = ''
-  try {
-    const { data } = await api.post('/dashboard/affise-password')
-    return data.password || ''
-  } catch (err) {
-    revealError.value = err.response?.data?.detail || 'Не удалось получить пароль'
-    return ''
-  } finally {
-    revealLoading.value = false
-  }
+async function requestPassword() {
+  const { data } = await api.post('/dashboard/affise-password')
+  return data.password || ''
 }
 
 async function togglePassword() {
@@ -37,14 +28,25 @@ async function togglePassword() {
     revealError.value = ''
     return
   }
-  revealedPassword.value = await fetchPassword()
+
+  revealLoading.value = true
+  revealError.value = ''
+  try {
+    revealedPassword.value = await requestPassword()
+  } catch (err) {
+    revealError.value = err.response?.data?.detail || 'Не удалось получить пароль'
+  } finally {
+    revealLoading.value = false
+  }
 }
 
 async function copyPassword() {
+  if (copied.value) return
+
   copyLoading.value = true
   revealError.value = ''
   try {
-    const password = revealedPassword.value || await fetchPassword()
+    const password = revealedPassword.value || await requestPassword()
     if (!password) return
     await navigator.clipboard.writeText(password)
     copied.value = true
@@ -87,7 +89,7 @@ async function saveCountry() {
             <button
               type="button"
               class="btn-outline inline-flex min-w-[148px] justify-center"
-              :disabled="revealLoading || copyLoading"
+              :disabled="revealLoading"
               @click="togglePassword"
             >
               {{ revealLoading ? 'Загрузка...' : revealedPassword ? 'Скрыть' : 'Показать пароль' }}
@@ -95,7 +97,8 @@ async function saveCountry() {
             <button
               type="button"
               class="btn-outline inline-flex min-w-[116px] justify-center"
-              :disabled="copyLoading || revealLoading"
+              :class="copied ? '!border-green-600 !bg-green-600 !text-white' : ''"
+              :disabled="copyLoading"
               @click="copyPassword"
             >
               <svg

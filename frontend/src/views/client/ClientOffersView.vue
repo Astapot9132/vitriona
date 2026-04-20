@@ -1,20 +1,86 @@
-<script setup>
+<script setup lang="ts">
+import type { AxiosError } from 'axios'
 import { onMounted, reactive, ref } from 'vue'
 
 import AppLayout from '@/components/AppLayout.vue'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 
+type OfferPayment = {
+  revenue: number | string | null
+}
+
+type OfferLanding = {
+  title: string | null
+  url: string | null
+  url_preview: string | null
+  hash: string | null
+}
+
+type Offer = {
+  id: number
+  external_id: string
+  title: string
+  countries: string[] | null
+  payments?: OfferPayment[] | null
+  epc?: number | null
+  link?: string | null
+  description_lang?: Record<string, string> | null
+  landings?: OfferLanding[] | null
+}
+
+type OffersMeta = {
+  total?: number
+}
+
+type OfferFilters = {
+  search?: string
+  category?: string
+  country?: string
+}
+
+type OffersResponse = {
+  offers: {
+    data: Offer[]
+    meta: OffersMeta
+  }
+  filters: OfferFilters
+  categories: string[]
+  countries: string[]
+  synced_at: string | null
+  has_api_key: boolean
+}
+
+type SyncMessage = {
+  type: 'success' | 'error'
+  text: string
+}
+
+type SyncResponse = {
+  message?: string
+}
+
+type DetailResponse = {
+  detail?: string
+}
+
 const loading = ref(false)
 const syncing = ref(false)
-const selectedOffer = ref(null)
-const syncMessage = ref(null)
-const data = ref({ offers: { data: [], meta: {} }, filters: {}, categories: [], countries: [], synced_at: null, has_api_key: false })
+const selectedOffer = ref<Offer | null>(null)
+const syncMessage = ref<SyncMessage | null>(null)
+const data = ref<OffersResponse>({
+  offers: { data: [], meta: {} },
+  filters: {},
+  categories: [],
+  countries: [],
+  synced_at: null,
+  has_api_key: false,
+})
 const filters = reactive({ search: '', category: '', country: '', page: 1 })
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
-  const { data: response } = await api.get('/offers', { params: filters })
+  const { data: response } = await api.get<OffersResponse>('/offers', { params: filters })
   data.value = response
   filters.search = response.filters.search || ''
   filters.category = response.filters.category || ''
@@ -22,15 +88,16 @@ async function load() {
   loading.value = false
 }
 
-async function syncOffers() {
+async function syncOffers(): Promise<void> {
   syncing.value = true
   syncMessage.value = null
   try {
-    const { data: response } = await api.post('/offers/sync')
-    syncMessage.value = { type: 'success', text: response.message }
+    const { data: response } = await api.post<SyncResponse>('/offers/sync')
+    syncMessage.value = { type: 'success', text: response.message || 'Синхронизация завершена' }
     await load()
   } catch (err) {
-    syncMessage.value = { type: 'error', text: err.response?.data?.detail || 'Ошибка синхронизации' }
+    const errorResponse = err as AxiosError<DetailResponse>
+    syncMessage.value = { type: 'error', text: errorResponse.response?.data?.detail || 'Ошибка синхронизации' }
   } finally {
     syncing.value = false
   }

@@ -1,4 +1,5 @@
-<script setup>
+<script setup lang="ts">
+import type { AxiosError } from 'axios'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -6,20 +7,46 @@ import { COUNTRIES } from '@/lib/countries'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 
+type FieldType = 'multiselect' | 'select' | 'text'
+
+type OnboardingFieldValue = string | string[]
+type OnboardingFieldValues = Record<number, OnboardingFieldValue>
+
+interface CustomField {
+  id: number
+  name: string
+  field_type?: FieldType
+  field_values?: Record<string, string>
+}
+
+interface OnboardingResponse {
+  redirect?: string
+  detected_country?: string | null
+  custom_fields?: CustomField[]
+}
+
+interface RedirectResponse {
+  redirect: string
+}
+
+interface ErrorResponse {
+  detail?: string
+  message?: string
+}
+
 const router = useRouter()
 const auth = useAuthStore()
 const detectedCountry = ref('')
-const customFields = ref([])
+const customFields = ref<CustomField[]>([])
 const country = ref('')
-const values = reactive({})
+const values = reactive<OnboardingFieldValues>({})
 const loading = ref(false)
 const apiError = ref('')
-const errors = ref({})
 
 onMounted(async () => {
-  const { data } = await api.get('/onboarding')
+  const { data } = await api.get<OnboardingResponse>('/onboarding')
   if (data.redirect) {
-    router.push(data.redirect)
+    await router.push(data.redirect)
     return
   }
   detectedCountry.value = data.detected_country || ''
@@ -30,23 +57,26 @@ onMounted(async () => {
   }
 })
 
-async function submit() {
+async function submit(): Promise<void> {
   loading.value = true
   apiError.value = ''
-  errors.value = {}
   try {
-    const { data } = await api.post('/onboarding', { country: country.value, custom_fields: values })
+    const { data } = await api.post<RedirectResponse>('/onboarding', {
+      country: country.value,
+      custom_fields: values,
+    })
     await auth.bootstrap(true)
-    router.push(data.redirect)
+    await router.push(data.redirect)
   } catch (err) {
-    apiError.value = err.response?.data?.detail || 'Ошибка сохранения'
+    const apiErrorResponse = err as AxiosError<ErrorResponse>
+    apiError.value = apiErrorResponse.response?.data?.detail || apiErrorResponse.response?.data?.message || 'Ошибка сохранения'
   } finally {
     loading.value = false
   }
 }
 
-function toggleMulti(fieldId, option) {
-  const current = values[fieldId] || []
+function toggleMulti(fieldId: number, option: string): void {
+  const current = Array.isArray(values[fieldId]) ? values[fieldId] : []
   if (current.includes(option)) {
     values[fieldId] = current.filter((item) => item !== option)
   } else {

@@ -1,71 +1,119 @@
-<script setup>
-import { computed, ref } from 'vue'
+<script setup lang="ts">
+import type { AxiosError } from 'axios'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import AppLayout from '@/components/AppLayout.vue'
 import PinCodeInput from '@/components/PinCodeInput.vue'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
+
+type LoginStep = 'email' | 'pin'
+
+interface RedirectResponse {
+  redirect: string
+}
+
+interface ErrorResponse {
+  detail?: string
+  message?: string
+}
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const loading = ref(false)
-const step = ref('email')
+const step = ref<LoginStep>('email')
 const email = ref('')
 const pin = ref('')
 const error = ref('')
 const cooldown = ref(0)
-let timerId = null
+const retryAvailableAt = ref<number | null>(null)
+let timerId: number | null = null
 
-function startCooldown(seconds = 60) {
-  window.clearInterval(timerId)
+onUnmounted(() => {
+  if (timerId !== null) {
+    window.clearInterval(timerId)
+    timerId = null
+  }
+})
+
+function startCooldown(seconds = 60): void {
+  if (timerId !== null) {
+    window.clearInterval(timerId)
+  }
   cooldown.value = seconds
   timerId = window.setInterval(() => {
     cooldown.value -= 1
     if (cooldown.value <= 0) {
-      window.clearInterval(timerId)
+      if (timerId !== null) {
+        window.clearInterval(timerId)
+      }
       cooldown.value = 0
+      retryAvailableAt.value = null
+      timerId = null
     }
   }, 1000)
 }
 
-async function sendPin() {
+function applyRetryCooldown(seconds: number): void {
+  retryAvailableAt.value = Date.now() + seconds * 1000
+  startCooldown(seconds)
+}
+
+const retryAtLabel = computed(() => {
+  if (!retryAvailableAt.value) return ''
+  return new Date(retryAvailableAt.value).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+})
+
+async function sendPin(): Promise<boolean> {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await api.post('/auth/admin/login/send-pin', { email: email.value })
+    const { data } = await api.post<RedirectResponse>('/auth/admin/login/send-pin', { email: email.value })
     if (data.redirect) {
       await auth.bootstrap(true)
-      router.push('/admin/dashboard')
+      await router.push('/admin/dashboard')
       return false
     }
-    startCooldown()
+    applyRetryCooldown(60)
     return true
   } catch (err) {
-    const retry = err.response?.headers?.['retry-after']
-    if (retry) startCooldown(Number(retry))
-    error.value = err.response?.data?.detail || 'Ошибка при отправке кода.'
+    const apiError = err as AxiosError<ErrorResponse>
+    const retryAfter = Number(apiError.response?.headers?.['retry-after'] || 0)
+    if (retryAfter > 0) {
+      applyRetryCooldown(retryAfter)
+      error.value = ''
+      return false
+    }
+    error.value = apiError.response?.data?.detail || apiError.response?.data?.message || 'Ошибка при отправке кода.'
     return false
   } finally {
     loading.value = false
   }
 }
 
-async function submitEmail() {
+async function submitEmail(): Promise<void> {
   const ok = await sendPin()
   if (ok) step.value = 'pin'
 }
 
-async function submitPin() {
+async function submitPin(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await api.post('/auth/admin/login/verify-pin', { email: email.value, pin: pin.value })
+    const { data } = await api.post<RedirectResponse>('/auth/admin/login/verify-pin', {
+      email: email.value,
+      pin: pin.value,
+    })
     await auth.bootstrap(true)
-    router.push(data.redirect === '/admin' ? '/admin/dashboard' : data.redirect)
+    await router.push(data.redirect === '/admin' ? '/admin/dashboard' : data.redirect)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Ошибка проверки кода.'
+    const apiError = err as AxiosError<ErrorResponse>
+    error.value = apiError.response?.data?.detail || apiError.response?.data?.message || 'Ошибка проверки кода.'
   } finally {
     loading.value = false
   }
@@ -93,6 +141,9 @@ async function submitPin() {
             <input v-model="email" type="email" class="input-base" placeholder="admin@example.com" :disabled="loading" required />
           </div>
           <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+          <p v-if="cooldown > 0 && retryAtLabel" class="text-sm text-muted-foreground">
+            Следующий код можно запросить в {{ retryAtLabel }}
+          </p>
           <button type="submit" class="btn-primary w-full" :disabled="loading || cooldown > 0">
             {{ loading ? 'Отправляем...' : cooldown > 0 ? `Подождите (${cooldown}с)` : 'Продолжить' }}
           </button>
@@ -105,6 +156,9 @@ async function submitPin() {
           </div>
           <PinCodeInput v-model="pin" :disabled="loading" />
           <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+          <p v-if="cooldown > 0 && retryAtLabel" class="text-sm text-muted-foreground">
+            Следующий код можно запросить в {{ retryAtLabel }}
+          </p>
           <button type="submit" class="btn-primary w-full" :disabled="loading || pin.length < 6">
             {{ loading ? 'Проверяем...' : 'Войти' }}
           </button>

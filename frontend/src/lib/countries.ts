@@ -1,4 +1,9 @@
-export const COUNTRIES = [
+export interface CountryOption {
+  code: string
+  name: string
+}
+
+export const COUNTRIES: CountryOption[] = [
   { code: 'AF', name: 'Afghanistan' }, { code: 'AL', name: 'Albania' },
   { code: 'DZ', name: 'Algeria' }, { code: 'AR', name: 'Argentina' },
   { code: 'AM', name: 'Armenia' }, { code: 'AU', name: 'Australia' },

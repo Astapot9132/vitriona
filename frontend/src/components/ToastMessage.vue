@@ -1,18 +1,16 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted } from 'vue'
 
-const props = defineProps({
-  message: {
-    type: String,
-    required: true,
-  },
-  timeout: {
-    type: Number,
-    default: 2200,
-  },
+const props = withDefaults(defineProps<{
+  message: string
+  timeout?: number
+}>(), {
+  timeout: 2200,
 })
 
-const emit = defineEmits(['done'])
+const emit = defineEmits<{
+  done: []
+}>()
 
 onMounted(() => {
   window.setTimeout(() => emit('done'), props.timeout)

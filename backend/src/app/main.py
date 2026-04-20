@@ -1,7 +1,7 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import JSONResponse
@@ -31,6 +31,11 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(client_router)
+api_router.include_router(admin_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL, APP_URL],
@@ -53,7 +58,5 @@ async def csrf_middleware(request: Request, call_next):
 
 
 app.include_router(meta_router)
-app.include_router(auth_router, prefix="/api")
-app.include_router(client_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
+app.include_router(api_router)
 app.mount("/storage", StaticFiles(directory=str(storage_public_dir), html=True), name="storage")

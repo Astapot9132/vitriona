@@ -1,3 +1,4 @@
+import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
@@ -15,7 +16,7 @@ import ShowcaseEditView from '@/views/client/ShowcaseEditView.vue'
 import ShowcasesView from '@/views/client/ShowcasesView.vue'
 import PrototypesView from '@/views/prototypes/PrototypesView.vue'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   { path: '/', component: HomeView },
   { path: '/client', component: ClientLoginView, meta: { guest: 'client' } },
   { path: '/onboarding', component: ClientOnboardingView, meta: { auth: true } },

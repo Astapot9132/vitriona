@@ -1,7 +1,22 @@
-import { getOfferDisplayName, getOfferDisplayDescription, getOfferCtaText, getOfferPoints, getOfferLogoStyle, getOrderedSelectedOffers } from './constructorDefaults';
+import {
+  getOfferCtaText,
+  getOfferDisplayDescription,
+  getOfferDisplayName,
+  getOfferLogoStyle,
+  getOfferPoints,
+  getOrderedSelectedOffers,
+} from './constructorDefaults'
+import type { ShowcaseConfig, ShowcaseOffer } from './constructorDefaults'
 
-function esc(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export type PreviewMode = 'mobile' | 'desktop'
+
+export type PreviewResult = {
+  html: string
+  containerClass: string
+}
+
+function esc(value: unknown): string {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 const PREVIEW_CSS = `
@@ -108,58 +123,62 @@ const PREVIEW_CSS = `
 
 /* Footer */
 .landing-preview .landing-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280; line-height: 1.4; white-space: pre-line; }
-`;
+`
 
-export { PREVIEW_CSS };
+export { PREVIEW_CSS }
 
-export default function buildPreviewHtml(config, offers, previewMode) {
-    const selectedOffers = getOrderedSelectedOffers(offers, config);
-    const designVariant = config.designVariant || 'variant1';
-    const variantNum = designVariant.slice(-1);
-    const title = esc(config.title || '');
-    const description = esc(config.description || '');
-    const legalInfo = esc(config.legalInfo || '').replace(/\n/g, '<br>');
-    const landingPoints = (config.landingPoints || []).slice(0, 3);
-    const twoCol = config.offersTwoColDesktop;
-    const accentedIds = config.accentedOfferIds || [];
+export default function buildPreviewHtml(
+  config: ShowcaseConfig,
+  offers: ShowcaseOffer[],
+  previewMode: PreviewMode,
+): PreviewResult {
+  const selectedOffers = getOrderedSelectedOffers(offers, config)
+  const designVariant = config.designVariant || 'variant1'
+  const variantNum = designVariant.slice(-1)
+  const title = esc(config.title || '')
+  const description = esc(config.description || '')
+  const legalInfo = esc(config.legalInfo || '').replace(/\n/g, '<br>')
+  const landingPoints = (config.landingPoints || []).slice(0, 3)
+  const twoCol = config.offersTwoColDesktop
+  const accentedIds = config.accentedOfferIds || []
 
-    const classes = [`landing-preview`, `landing-variant${variantNum}`];
-    if (previewMode === 'desktop') {
-        classes.push('preview-desktop');
-        if (twoCol) classes.push('offers-two-col-desktop');
-    } else {
-        classes.push('preview-mobile');
-    }
+  const classes = ['landing-preview', `landing-variant${variantNum}`]
+  if (previewMode === 'desktop') {
+    classes.push('preview-desktop')
+    if (twoCol) classes.push('offers-two-col-desktop')
+  } else {
+    classes.push('preview-mobile')
+  }
 
-    const landingPointsHtml = landingPoints
-        .map(p => `<li>${esc(p)}</li>`)
-        .join('');
+  const landingPointsHtml = landingPoints
+    .map((point) => `<li>${esc(point)}</li>`)
+    .join('')
 
-    const offersHtml = selectedOffers
-        .map((o, idx) => {
-            const displayName = getOfferDisplayName(o, config);
-            const desc = getOfferDisplayDescription(o, config);
-            const ctaText = getOfferCtaText(o, config);
-            const points = getOfferPoints(o, config).slice(0, 3);
-            const isAccented = accentedIds.includes(o.id);
-            const gradient = getOfferLogoStyle(idx);
-            const letter = (displayName || 'O').charAt(0).toUpperCase();
-            const pointsHtml = points.map(p => `<li>${esc(p)}</li>`).join('');
+  const offersHtml = selectedOffers
+    .map((offer, index) => {
+      const displayName = getOfferDisplayName(offer, config)
+      const descriptionText = getOfferDisplayDescription(offer, config)
+      const ctaText = getOfferCtaText(offer, config)
+      const points = getOfferPoints(offer, config).slice(0, 3)
+      const isAccented = accentedIds.includes(offer.id)
+      const gradient = getOfferLogoStyle(index)
+      const letter = (displayName || 'O').charAt(0).toUpperCase()
+      const pointsHtml = points.map((point) => `<li>${esc(point)}</li>`).join('')
 
-            return `<div class="offer-card${isAccented ? ' is-accent' : ''}">
+      return `<div class="offer-card${isAccented ? ' is-accent' : ''}">
                 <div class="offer-card-logo" style="background:${gradient}"><span class="offer-card-logo-icon">${letter}</span></div>
                 <div class="offer-card-text">
                     <div class="offer-card-title">${esc(displayName)}</div>
-                    ${desc ? `<div class="offer-card-meta">${esc(desc)}</div>` : ''}
+                    ${descriptionText ? `<div class="offer-card-meta">${esc(descriptionText)}</div>` : ''}
                     ${pointsHtml ? `<ul class="offer-card-points">${pointsHtml}</ul>` : ''}
                 </div>
                 <button type="button" class="offer-card-cta">${esc(ctaText)}</button>
-            </div>`;
-        })
-        .join('');
+            </div>`
+    })
+    .join('')
 
-    const headerContent = designVariant === 'variant4'
-        ? `<header class="landing-header-hero">
+  const headerContent = designVariant === 'variant4'
+    ? `<header class="landing-header-hero">
             <div class="landing-header-hero-text">
                 <div class="landing-header-title">${title || 'Без названия'}</div>
                 <div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>
@@ -167,15 +186,15 @@ export default function buildPreviewHtml(config, offers, previewMode) {
             </div>
             <div class="landing-header-hero-img" aria-hidden="true"></div>
            </header>`
-        : `<header class="landing-header">
+    : `<header class="landing-header">
             <div class="landing-header-title">${title || 'Без названия'}</div>
             <div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>
             ${landingPointsHtml ? `<ul class="landing-points">${landingPointsHtml}</ul>` : ''}
-           </header>`;
+           </header>`
 
-    const html = `${headerContent}
+  const html = `${headerContent}
         <div class="landing-offers-grid">${offersHtml}</div>
-        <div class="landing-footer">${legalInfo}</div>`;
+        <div class="landing-footer">${legalInfo}</div>`
 
-    return { html, containerClass: classes.join(' ') };
+  return { html, containerClass: classes.join(' ') }
 }

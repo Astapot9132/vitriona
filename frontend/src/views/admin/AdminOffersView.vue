@@ -1,21 +1,52 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 
 import AppLayout from '@/components/AppLayout.vue'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 
-const data = ref({ offers: { data: [], meta: {} }, filters: {}, categories: [], countries: [] })
+type AdminOffer = {
+  id: number
+  external_id: string | number
+  title: string
+  status: string
+  countries?: string[] | null
+  epc?: number | null
+  synced_at?: string | null
+  url?: string | null
+  preview_url?: string | null
+  description_lang?: Record<string, string> | null
+  raw_data?: unknown
+}
+
+type AdminOffersResponse = {
+  offers: {
+    data: AdminOffer[]
+    meta: {
+      total?: number
+    }
+  }
+  filters: Record<string, string>
+  categories: string[]
+  countries: string[]
+}
+
+const data = ref<AdminOffersResponse>({
+  offers: { data: [], meta: {} },
+  filters: {},
+  categories: [],
+  countries: [],
+})
 const filters = reactive({ search: '', category: '', status: '', country: '', sort: 'id', dir: 'desc', page: 1 })
 const syncing = ref(false)
-const selectedOffer = ref(null)
+const selectedOffer = ref<AdminOffer | null>(null)
 
-async function load() {
-  const { data: response } = await api.get('/admin/offers', { params: filters })
+async function load(): Promise<void> {
+  const { data: response } = await api.get<AdminOffersResponse>('/admin/offers', { params: filters })
   data.value = response
 }
 
-async function syncOffers() {
+async function syncOffers(): Promise<void> {
   syncing.value = true
   try {
     await api.post('/admin/offers/sync')
@@ -25,8 +56,8 @@ async function syncOffers() {
   }
 }
 
-async function openOffer(item) {
-  const { data: response } = await api.get(`/admin/offers/${item.id}`)
+async function openOffer(item: AdminOffer): Promise<void> {
+  const { data: response } = await api.get<AdminOffer>(`/admin/offers/${item.id}`)
   selectedOffer.value = response
 }
 

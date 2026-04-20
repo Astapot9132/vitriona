@@ -1,20 +1,26 @@
-<script setup>
+<script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue'
 import { nextTick, onMounted, ref, watch } from 'vue'
 
-const props = defineProps({
-  disabled: {
-    type: Boolean,
-    default: false,
-  },
-  modelValue: {
-    type: String,
-    default: '',
-  },
+const props = withDefaults(defineProps<{
+  disabled?: boolean
+  modelValue?: string
+}>(), {
+  disabled: false,
+  modelValue: '',
 })
 
-const emit = defineEmits(['update:modelValue', 'complete'])
-const digits = ref(Array.from({ length: 6 }, (_, index) => props.modelValue[index] || ''))
-const refs = ref([])
+const emit = defineEmits<{
+  'update:modelValue': [value: string]
+  complete: [value: string]
+}>()
+
+const digits = ref<string[]>(Array.from({ length: 6 }, (_, index) => props.modelValue[index] || ''))
+const refs = ref<Array<HTMLInputElement | null>>([])
+
+function setInputRef(index: number, element: Element | ComponentPublicInstance | null): void {
+  refs.value[index] = element instanceof HTMLInputElement ? element : null
+}
 
 watch(
   () => props.modelValue,
@@ -27,7 +33,7 @@ onMounted(() => {
   refs.value[0]?.focus()
 })
 
-function updateValue() {
+function updateValue(): void {
   const pin = digits.value.join('')
   emit('update:modelValue', pin)
   if (pin.length === 6 && !digits.value.includes('')) {
@@ -35,7 +41,8 @@ function updateValue() {
   }
 }
 
-function handleChange(index, value) {
+function handleChange(index: number, event: Event): void {
+  const value = (event.target as HTMLInputElement).value
   const digit = value.replace(/\D/g, '').slice(-1)
   digits.value[index] = digit
   updateValue()
@@ -44,7 +51,7 @@ function handleChange(index, value) {
   }
 }
 
-function handleKeyDown(index, event) {
+function handleKeyDown(index: number, event: KeyboardEvent): void {
   if (event.key === 'Backspace' && !digits.value[index] && index > 0) {
     refs.value[index - 1]?.focus()
   }
@@ -56,9 +63,9 @@ function handleKeyDown(index, event) {
   }
 }
 
-function handlePaste(event) {
+function handlePaste(event: ClipboardEvent): void {
   event.preventDefault()
-  const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+  const pasted = event.clipboardData?.getData('text').replace(/\D/g, '').slice(0, 6) || ''
   if (!pasted) return
   digits.value = Array.from({ length: 6 }, (_, index) => pasted[index] || '')
   updateValue()
@@ -72,14 +79,14 @@ function handlePaste(event) {
     <input
       v-for="(_, index) in digits"
       :key="index"
-      :ref="(element) => refs[index] = element"
+      :ref="(element) => setInputRef(index, element)"
       :value="digits[index]"
       type="text"
       inputmode="numeric"
       maxlength="1"
       :disabled="disabled"
       class="h-12 w-10 rounded-md border border-input bg-background text-center text-lg font-semibold text-foreground"
-      @input="handleChange(index, $event.target.value)"
+      @input="handleChange(index, $event)"
       @keydown="handleKeyDown(index, $event)"
       @paste="handlePaste"
     />

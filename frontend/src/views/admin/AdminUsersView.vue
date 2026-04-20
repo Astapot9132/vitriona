@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -6,31 +6,49 @@ import AppLayout from '@/components/AppLayout.vue'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 
+type AdminUser = {
+  id: number
+  name: string | null
+  email: string
+  showcases_count: number
+  is_banned: boolean
+}
+
+type AdminUsersResponse = {
+  users?: AdminUser[]
+}
+
+type RedirectResponse = {
+  redirect?: string
+}
+
 const router = useRouter()
 const auth = useAuthStore()
 const query = ref('')
-const users = ref([])
+const users = ref<AdminUser[]>([])
 
-const filteredUsers = computed(() => {
+const filteredUsers = computed<AdminUser[]>(() => {
   if (!query.value) return users.value
   const lower = query.value.toLowerCase()
   return users.value.filter((item) => item.name?.toLowerCase().includes(lower) || item.email?.toLowerCase().includes(lower))
 })
 
-async function load() {
-  const { data } = await api.get('/admin/users')
+async function load(): Promise<void> {
+  const { data } = await api.get<AdminUsersResponse>('/admin/users')
   users.value = data.users || []
 }
 
-async function toggleBan(user) {
+async function toggleBan(user: AdminUser): Promise<void> {
   await api.post(`/admin/users/${user.id}/${user.is_banned ? 'unban' : 'ban'}`)
   await load()
 }
 
-async function impersonate(user) {
-  const { data } = await api.post(`/admin/users/${user.id}/impersonate`)
+async function impersonate(user: AdminUser): Promise<void> {
+  const { data } = await api.post<RedirectResponse>(`/admin/users/${user.id}/impersonate`)
   await auth.bootstrap(true)
-  router.push(data.redirect)
+  if (data.redirect) {
+    await router.push(data.redirect)
+  }
 }
 
 onMounted(load)

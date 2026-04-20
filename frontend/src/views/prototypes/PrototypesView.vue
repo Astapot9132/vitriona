@@ -1,5 +1,10 @@
-<script setup>
-const prototypes = [
+<script setup lang="ts">
+type PrototypeItem = {
+  slug: string
+  name: string
+}
+
+const prototypes: PrototypeItem[] = [
   { slug: 'admin', name: 'Админка' },
   { slug: 'constructor', name: 'Конструктор витрин' },
   { slug: 'showcase-list', name: 'Список витрин' },

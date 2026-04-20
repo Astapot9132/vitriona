@@ -1,4 +1,4 @@
-export function formatDateTime(value) {
+export function formatDateTime(value: string | number | Date | null | undefined): string {
   if (!value) return '—'
   return new Date(value).toLocaleString('ru-RU', {
     day: '2-digit',
@@ -9,6 +9,6 @@ export function formatDateTime(value) {
   })
 }
 
-export function wait(ms) {
+export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }

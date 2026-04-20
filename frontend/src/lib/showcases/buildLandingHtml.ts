@@ -1,59 +1,70 @@
-import { getOfferDisplayName, getOfferDisplayDescription, getOfferCtaText, getOfferPoints, getOfferLogoStyle, getOrderedSelectedOffers } from './constructorDefaults';
+import {
+  getOfferCtaText,
+  getOfferDisplayDescription,
+  getOfferDisplayName,
+  getOfferLogoStyle,
+  getOfferPoints,
+  getOrderedSelectedOffers,
+} from './constructorDefaults'
+import type { ShowcaseConfig, ShowcaseOffer } from './constructorDefaults'
 
-function esc(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function esc(value: unknown): string {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-export default function buildLandingHtml(config, offers) {
-    const selectedOffers = getOrderedSelectedOffers(offers, config);
-    const designVariant = config.designVariant || 'variant1';
-    const variantNum = designVariant.slice(-1);
-    const title = esc(config.title || '');
-    const description = esc(config.description || '');
-    const legalInfo = esc(config.legalInfo || '').replace(/\n/g, '<br>');
-    const landingPoints = (config.landingPoints || []).slice(0, 3);
-    const twoCol = config.offersTwoColDesktop;
-    const accentedIds = config.accentedOfferIds || [];
+export default function buildLandingHtml(
+  config: ShowcaseConfig,
+  offers: ShowcaseOffer[],
+): string {
+  const selectedOffers = getOrderedSelectedOffers(offers, config)
+  const designVariant = config.designVariant || 'variant1'
+  const variantNum = designVariant.slice(-1)
+  const title = esc(config.title || '')
+  const description = esc(config.description || '')
+  const legalInfo = esc(config.legalInfo || '').replace(/\n/g, '<br>')
+  const landingPoints = (config.landingPoints || []).slice(0, 3)
+  const twoCol = config.offersTwoColDesktop
+  const accentedIds = config.accentedOfferIds || []
 
-    const bodyClasses = [];
-    if (designVariant === 'variant1') bodyClasses.push('result-variant1');
-    else if (designVariant === 'variant2') bodyClasses.push('result-variant2');
-    else if (designVariant === 'variant4') bodyClasses.push('result-variant4');
-    if (twoCol) bodyClasses.push('result-offers-two-col-desktop');
+  const bodyClasses: string[] = []
+  if (designVariant === 'variant1') bodyClasses.push('result-variant1')
+  else if (designVariant === 'variant2') bodyClasses.push('result-variant2')
+  else if (designVariant === 'variant4') bodyClasses.push('result-variant4')
+  if (twoCol) bodyClasses.push('result-offers-two-col-desktop')
 
-    const landingPointsHtml = landingPoints
-        .map(p => `<li>${esc(p)}</li>`)
-        .join('');
+  const landingPointsHtml = landingPoints
+    .map((point) => `<li>${esc(point)}</li>`)
+    .join('')
 
-    const offersHtml = selectedOffers
-        .map((o, idx) => {
-            const displayName = getOfferDisplayName(o, config);
-            const desc = getOfferDisplayDescription(o, config);
-            const ctaText = getOfferCtaText(o, config);
-            const points = getOfferPoints(o, config).slice(0, 3);
-            const isAccented = accentedIds.includes(o.id);
-            const gradient = getOfferLogoStyle(idx);
-            const letter = (displayName || 'O').charAt(0).toUpperCase();
-            const pointsHtml = points.map(p => `<li>${esc(p)}</li>`).join('');
+  const offersHtml = selectedOffers
+    .map((offer, index) => {
+      const displayName = getOfferDisplayName(offer, config)
+      const descriptionText = getOfferDisplayDescription(offer, config)
+      const ctaText = getOfferCtaText(offer, config)
+      const points = getOfferPoints(offer, config).slice(0, 3)
+      const isAccented = accentedIds.includes(offer.id)
+      const gradient = getOfferLogoStyle(index)
+      const letter = (displayName || 'O').charAt(0).toUpperCase()
+      const pointsHtml = points.map((point) => `<li>${esc(point)}</li>`).join('')
 
-            return `
+      return `
             <div class="offer-card${isAccented ? ' is-accent' : ''}">
                 <div class="offer-card-logo" style="background:${gradient}"><span class="offer-card-logo-icon">${letter}</span></div>
                 <div class="offer-card-text">
                     <div class="offer-card-title">${esc(displayName)}</div>
-                    ${desc ? `<div class="offer-card-meta">${esc(desc)}</div>` : ''}
+                    ${descriptionText ? `<div class="offer-card-meta">${esc(descriptionText)}</div>` : ''}
                     ${pointsHtml ? `<ul class="offer-card-points">${pointsHtml}</ul>` : ''}
                 </div>
                 <button type="button" class="offer-card-cta">${esc(ctaText)}</button>
-            </div>`;
-        })
-        .join('');
+            </div>`
+    })
+    .join('')
 
-    const headerContent = designVariant === 'variant4'
-        ? `<div class="landing-header-hero-text"><div class="landing-header-title">${title || 'Без названия'}</div><div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>${landingPointsHtml ? `<ul class="landing-points">${landingPointsHtml}</ul>` : ''}</div><div class="landing-header-hero-img" aria-hidden="true"></div>`
-        : `<div class="landing-header-title">${title || 'Без названия'}</div><div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>${landingPointsHtml ? `<ul class="landing-points">${landingPointsHtml}</ul>` : ''}`;
+  const headerContent = designVariant === 'variant4'
+    ? `<div class="landing-header-hero-text"><div class="landing-header-title">${title || 'Без названия'}</div><div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>${landingPointsHtml ? `<ul class="landing-points">${landingPointsHtml}</ul>` : ''}</div><div class="landing-header-hero-img" aria-hidden="true"></div>`
+    : `<div class="landing-header-title">${title || 'Без названия'}</div><div class="landing-header-subtitle">${description || 'Описание лендинга не задано.'}</div>${landingPointsHtml ? `<ul class="landing-points">${landingPointsHtml}</ul>` : ''}`
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8" />
@@ -194,5 +205,5 @@ export default function buildLandingHtml(config, offers) {
         </main>
     </div>
 </body>
-</html>`;
+</html>`
 }

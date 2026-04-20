@@ -1,13 +1,22 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
 import AppLayout from '@/components/AppLayout.vue'
 import { api } from '@/lib/api'
 
-const admins = ref([])
+type AdminListItem = {
+  name: string | null
+  email: string
+}
+
+type AdminsResponse = {
+  admins?: AdminListItem[]
+}
+
+const admins = ref<AdminListItem[]>([])
 
 onMounted(async () => {
-  const { data } = await api.get('/admin/admins')
+  const { data } = await api.get<AdminsResponse>('/admin/admins')
   admins.value = data.admins || []
 })
 </script>

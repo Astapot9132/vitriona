@@ -1,11 +1,21 @@
-import { useAuthStore } from '@/stores/auth'
+import type { InternalAxiosRequestConfig } from 'axios'
+import type { Pinia } from 'pinia'
+
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
+
+interface ApiRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean
+  _skipRefresh?: boolean
+}
+
+type PendingRequestResolver = (tokenUpdated: boolean) => void
 
 let isRefreshing = false
-let pendingRequests = []
+let pendingRequests: PendingRequestResolver[] = []
 let isConfigured = false
 
-export function setupApi(pinia) {
+export function setupApi(pinia: Pinia): void {
   if (isConfigured) {
     return
   }
@@ -13,15 +23,14 @@ export function setupApi(pinia) {
 
   const authStore = useAuthStore(pinia)
 
-  api.interceptors.request.use(async (config) => {
+  api.interceptors.request.use(async (config: ApiRequestConfig) => {
     const method = config.method ? config.method.toLowerCase() : null
-    const needsCsrf = method && !['get', 'head', 'options'].includes(method)
+    const needsCsrf = Boolean(method && !['get', 'head', 'options'].includes(method))
 
     if (needsCsrf) {
       if (!authStore.csrfToken) {
         await authStore.fetchCsrf()
       }
-      config.headers = config.headers || {}
       config.headers['X-CSRF-Token'] = authStore.csrfToken
     }
 
@@ -31,9 +40,11 @@ export function setupApi(pinia) {
   api.interceptors.response.use(
     (response) => response,
     async (error) => {
-      const { config, response } = error
+      const config = error.config as ApiRequestConfig | undefined
+      const response = error.response
       const status = response ? response.status : null
-      if (status !== 401 || (config && config._retry) || (config && config._skipRefresh)) {
+
+      if (status !== 401 || (config && config._retry) || (config && config._skipRefresh) || !config) {
         return Promise.reject(error)
       }
 
@@ -53,7 +64,8 @@ export function setupApi(pinia) {
       isRefreshing = true
 
       try {
-        await api.post('/auth/refresh', null, { _skipRefresh: true })
+        const refreshConfig: ApiRequestConfig = { _skipRefresh: true } as ApiRequestConfig
+        await api.post('/auth/refresh', null, refreshConfig)
         await authStore.bootstrap(true)
         pendingRequests.forEach((cb) => cb(true))
         return api(config)

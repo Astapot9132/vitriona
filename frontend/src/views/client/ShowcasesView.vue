@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -6,37 +6,56 @@ import AppLayout from '@/components/AppLayout.vue'
 import ToastMessage from '@/components/ToastMessage.vue'
 import { api } from '@/lib/api'
 
+type Showcase = {
+  id: number
+  name?: string | null
+  platform_main: string
+  platform_sub: string | null
+  url: string
+}
+
+type ShowcasesResponse = {
+  showcases?: Showcase[]
+}
+
+type ShowcaseActionResponse = {
+  message?: string
+  redirect?: string
+}
+
 const router = useRouter()
-const showcases = ref([])
+const showcases = ref<Showcase[]>([])
 const toast = ref('')
 const createForm = reactive({ name: '', platform_main: '', platform_sub: '', url: '' })
 const saving = ref(false)
 
-async function load() {
-  const { data } = await api.get('/showcases')
+async function load(): Promise<void> {
+  const { data } = await api.get<ShowcasesResponse>('/showcases')
   showcases.value = data.showcases || []
 }
 
-async function createShowcase() {
+async function createShowcase(): Promise<void> {
   saving.value = true
   try {
-    const { data } = await api.post('/showcases', createForm)
-    router.push(data.redirect)
+    const { data } = await api.post<ShowcaseActionResponse>('/showcases', createForm)
+    if (data.redirect) {
+      await router.push(data.redirect)
+    }
   } finally {
     saving.value = false
   }
 }
 
-async function duplicateShowcase(item) {
-  const { data } = await api.post(`/showcases/${item.id}/duplicate`)
-  toast.value = data.message
+async function duplicateShowcase(item: Showcase): Promise<void> {
+  const { data } = await api.post<ShowcaseActionResponse>(`/showcases/${item.id}/duplicate`)
+  toast.value = data.message || ''
   await load()
 }
 
-async function deleteShowcase(item) {
+async function deleteShowcase(item: Showcase): Promise<void> {
   if (!window.confirm('Удалить витрину?')) return
-  const { data } = await api.delete(`/showcases/${item.id}`)
-  toast.value = data.message
+  const { data } = await api.delete<ShowcaseActionResponse>(`/showcases/${item.id}`)
+  toast.value = data.message || ''
   await load()
 }
 

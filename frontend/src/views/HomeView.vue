@@ -1,3 +1,6 @@
+<script setup lang="ts">
+</script>
+
 <template>
   <div class="flex min-h-screen items-center justify-center bg-background">
     <div class="space-y-4 text-center">

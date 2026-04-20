@@ -1,10 +1,19 @@
-<script setup>
+<script setup lang="ts">
+import type { AxiosError } from 'axios'
 import { ref } from 'vue'
 
 import AppLayout from '@/components/AppLayout.vue'
 import { COUNTRIES } from '@/lib/countries'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
+
+type PasswordResponse = {
+  password?: string
+}
+
+type DetailResponse = {
+  detail?: string
+}
 
 const auth = useAuthStore()
 const country = ref(auth.user?.affise_country || '')
@@ -17,8 +26,8 @@ const saved = ref(false)
 const error = ref('')
 const revealError = ref('')
 
-async function requestPassword() {
-  const { data } = await api.post('/dashboard/affise-password')
+async function requestPassword(): Promise<string> {
+  const { data } = await api.post<PasswordResponse>('/dashboard/affise-password')
   return data.password || ''
 }
 
@@ -34,7 +43,8 @@ async function togglePassword() {
   try {
     revealedPassword.value = await requestPassword()
   } catch (err) {
-    revealError.value = err.response?.data?.detail || 'Не удалось получить пароль'
+    const errorResponse = err as AxiosError<DetailResponse>
+    revealError.value = errorResponse.response?.data?.detail || 'Не удалось получить пароль'
   } finally {
     revealLoading.value = false
   }
@@ -65,7 +75,8 @@ async function saveCountry() {
     saved.value = true
     window.setTimeout(() => { saved.value = false }, 2000)
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Ошибка сохранения'
+    const errorResponse = err as AxiosError<DetailResponse>
+    error.value = errorResponse.response?.data?.detail || 'Ошибка сохранения'
   } finally {
     saving.value = false
   }

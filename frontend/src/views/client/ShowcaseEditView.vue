@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -6,34 +6,64 @@ import AppLayout from '@/components/AppLayout.vue'
 import ToastMessage from '@/components/ToastMessage.vue'
 import { api } from '@/lib/api'
 import buildPreviewHtml, { PREVIEW_CSS } from '@/lib/showcases/buildPreviewHtml'
+import type { PreviewMode, PreviewResult } from '@/lib/showcases/buildPreviewHtml'
 import { DEFAULT_CONFIG, DEFAULT_OFFER_DESCRIPTION, DEFAULT_OFFER_POINT, DESIGN_VARIANTS } from '@/lib/showcases/constructorDefaults'
+import type { ShowcaseConfig, ShowcaseOffer } from '@/lib/showcases/constructorDefaults'
+
+type ShowcaseRecord = {
+  id: number
+  name: string
+  config: Partial<ShowcaseConfig>
+}
+
+type ShowcaseDomain = {
+  id: number
+  webmaster_domain: string
+}
+
+type ShowcaseResponse = {
+  showcase: ShowcaseRecord
+  offers?: ShowcaseOffer[]
+  domains?: ShowcaseDomain[]
+  systemDomains?: string[]
+  previewUrl?: string | null
+}
+
+type SaveShowcaseResponse = {
+  previewUrl?: string | null
+}
 
 const route = useRoute()
-const showcase = ref(null)
-const offers = ref([])
-const domains = ref([])
-const systemDomains = ref([])
+const showcase = ref<ShowcaseRecord | null>(null)
+const offers = ref<ShowcaseOffer[]>([])
+const domains = ref<ShowcaseDomain[]>([])
+const systemDomains = ref<string[]>([])
 const previewUrl = ref('')
 const saving = ref(false)
 const toast = ref('')
-const previewMode = ref('mobile')
-const config = reactive(structuredClone(DEFAULT_CONFIG))
+const previewMode = ref<PreviewMode>('mobile')
+const config = reactive<ShowcaseConfig>(structuredClone(DEFAULT_CONFIG) as ShowcaseConfig)
 const search = ref('')
 
-const preview = computed(() => buildPreviewHtml(config, offers.value, previewMode.value))
+const preview = computed<PreviewResult>(() => (
+  buildPreviewHtml(config, offers.value, previewMode.value) as PreviewResult
+))
 const previewMarkup = computed(() => `<style>${PREVIEW_CSS}</style>${preview.value.html}`)
 
-const filteredOffers = computed(() => {
+const filteredOffers = computed<ShowcaseOffer[]>(() => {
   if (!search.value) return offers.value
-  return offers.value.filter((item) => String(item.external_id).includes(search.value) || item.title.toLowerCase().includes(search.value.toLowerCase()))
+  return offers.value.filter((item) => (
+    String(item.external_id).includes(search.value)
+      || item.title.toLowerCase().includes(search.value.toLowerCase())
+  ))
 })
 
-const selectedOffers = computed(() => {
+const selectedOffers = computed<ShowcaseOffer[]>(() => {
   const ids = config.selectedOfferIds || []
   return offers.value.filter((offer) => ids.includes(offer.id))
 })
 
-function mergeConfig(savedConfig) {
+function mergeConfig(savedConfig?: Partial<ShowcaseConfig> | null): void {
   Object.assign(config, structuredClone(DEFAULT_CONFIG))
   if (savedConfig && typeof savedConfig === 'object') {
     Object.assign(config, savedConfig)
@@ -53,7 +83,7 @@ function mergeConfig(savedConfig) {
   }
 }
 
-function toggleOffer(offerId) {
+function toggleOffer(offerId: number): void {
   if (config.selectedOfferIds.includes(offerId)) {
     config.selectedOfferIds = config.selectedOfferIds.filter((item) => item !== offerId)
     config.showcaseOrder = config.showcaseOrder.filter((item) => item !== offerId)
@@ -63,7 +93,7 @@ function toggleOffer(offerId) {
   }
 }
 
-function toggleAccent(offerId) {
+function toggleAccent(offerId: number): void {
   if (config.accentedOfferIds.includes(offerId)) {
     config.accentedOfferIds = config.accentedOfferIds.filter((item) => item !== offerId)
   } else {
@@ -71,28 +101,74 @@ function toggleAccent(offerId) {
   }
 }
 
-function updateOfferField(target, offerId, value) {
-  config[target] = {
-    ...config[target],
+function updateOfferDisplayName(offerId: number, value: string): void {
+  config.offerDisplayNames = {
+    ...config.offerDisplayNames,
     [offerId]: value,
   }
 }
 
-function addLandingPoint() {
+function updateOfferDescription(offerId: number, value: string): void {
+  config.offerDisplayDescriptions = {
+    ...config.offerDisplayDescriptions,
+    [offerId]: value,
+  }
+}
+
+function updateOfferCtaText(offerId: number, value: string): void {
+  config.offerCtaTexts = {
+    ...config.offerCtaTexts,
+    [offerId]: value,
+  }
+}
+
+function updateOfferPoints(offerId: number, value: string[]): void {
+  config.offerPoints = {
+    ...config.offerPoints,
+    [offerId]: value,
+  }
+}
+
+function addLandingPoint(): void {
   if (config.landingPoints.length < 3) {
     config.landingPoints = [...config.landingPoints, '']
   }
 }
 
-function addOfferPoint(offerId) {
+function addOfferPoint(offerId: number): void {
   const current = config.offerPoints[offerId] || []
   if (current.length < 3) {
-    updateOfferField('offerPoints', offerId, [...current, ''])
+    updateOfferPoints(offerId, [...current, ''])
   }
 }
 
-async function load() {
-  const { data } = await api.get(`/showcases/${route.params.id}`)
+function onOfferDisplayNameInput(offerId: number, event: Event): void {
+  updateOfferDisplayName(offerId, (event.target as HTMLInputElement).value)
+}
+
+function onOfferDescriptionInput(offerId: number, event: Event): void {
+  updateOfferDescription(offerId, (event.target as HTMLTextAreaElement).value)
+}
+
+function onOfferCtaTextInput(offerId: number, event: Event): void {
+  updateOfferCtaText(offerId, (event.target as HTMLInputElement).value)
+}
+
+function onOfferPointInput(offerId: number, index: number, event: Event): void {
+  const current = config.offerPoints[offerId] || []
+  updateOfferPoints(
+    offerId,
+    current.map((item, idx) => (idx === index ? (event.target as HTMLInputElement).value : item)),
+  )
+}
+
+function removeOfferPoint(offerId: number, index: number): void {
+  const current = config.offerPoints[offerId] || []
+  updateOfferPoints(offerId, current.filter((_, idx) => idx !== index))
+}
+
+async function load(): Promise<void> {
+  const { data } = await api.get<ShowcaseResponse>(`/showcases/${route.params.id}`)
   showcase.value = data.showcase
   offers.value = data.offers || []
   domains.value = data.domains || []
@@ -101,10 +177,10 @@ async function load() {
   mergeConfig(data.showcase.config)
 }
 
-async function save() {
+async function save(): Promise<void> {
   saving.value = true
   try {
-    const { data } = await api.put(`/showcases/${route.params.id}`, { config })
+    const { data } = await api.put<SaveShowcaseResponse>(`/showcases/${route.params.id}`, { config })
     previewUrl.value = data.previewUrl || previewUrl.value
     toast.value = 'Витрина сохранена'
   } finally {
@@ -112,7 +188,7 @@ async function save() {
   }
 }
 
-async function openPreview() {
+async function openPreview(): Promise<void> {
   await save()
   window.open(previewUrl.value || `/storage/landings/${route.params.id}/index.html`, '_blank')
 }
@@ -216,20 +292,20 @@ onMounted(load)
                   :value="config.offerDisplayNames?.[offer.id] || ''"
                   class="input-base"
                   placeholder="Отображаемое название"
-                  @input="updateOfferField('offerDisplayNames', offer.id, $event.target.value)"
+                  @input="onOfferDisplayNameInput(offer.id, $event)"
                 />
                 <textarea
                   :value="config.offerDisplayDescriptions?.[offer.id] || ''"
                   class="textarea-base"
                   rows="2"
                   placeholder="Описание"
-                  @input="updateOfferField('offerDisplayDescriptions', offer.id, $event.target.value)"
+                  @input="onOfferDescriptionInput(offer.id, $event)"
                 />
                 <input
                   :value="config.offerCtaTexts?.[offer.id] || ''"
                   class="input-base"
                   placeholder="Текст кнопки"
-                  @input="updateOfferField('offerCtaTexts', offer.id, $event.target.value)"
+                  @input="onOfferCtaTextInput(offer.id, $event)"
                 />
                 <div class="space-y-2">
                   <div
@@ -241,12 +317,12 @@ onMounted(load)
                       :value="point"
                       class="input-base"
                       :placeholder="`Пойнт ${index + 1}`"
-                      @input="updateOfferField('offerPoints', offer.id, (config.offerPoints?.[offer.id] || []).map((item, idx) => idx === index ? $event.target.value : item))"
+                      @input="onOfferPointInput(offer.id, index, $event)"
                     />
                     <button
                       type="button"
                       class="btn-outline"
-                      @click="updateOfferField('offerPoints', offer.id, (config.offerPoints?.[offer.id] || []).filter((_, idx) => idx !== index))"
+                      @click="removeOfferPoint(offer.id, index)"
                     >
                       Удалить
                     </button>

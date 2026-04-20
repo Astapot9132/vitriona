@@ -1,31 +1,38 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 
-const props = defineProps({
-  role: {
-    type: String,
-    required: true,
-  },
-  title: {
-    type: String,
-    default: '',
-  },
+interface LayoutProps {
+  role: 'admin' | 'client'
+  title?: string
+}
+
+interface NavItem {
+  href: string
+  label: string
+}
+
+interface RedirectResponse {
+  redirect: string
+}
+
+const props = withDefaults(defineProps<LayoutProps>(), {
+  title: '',
 })
 
 const auth = useAuthStore()
 const router = useRouter()
 
-const clientNav = [
+const clientNav: NavItem[] = [
   { href: '/dashboard', label: 'Главная' },
   { href: '/offers', label: 'Офферы' },
   { href: '/showcases', label: 'Витрины' },
 ]
 
-const adminNav = [
+const adminNav: NavItem[] = [
   { href: '/admin/dashboard', label: 'Главная' },
   { href: '/admin/offers', label: 'Офферы' },
   { href: '/admin/admins', label: 'Админы' },
@@ -34,17 +41,17 @@ const adminNav = [
 
 const nav = computed(() => (props.role === 'admin' ? adminNav : clientNav))
 
-async function logout() {
+async function logout(): Promise<void> {
   const endpoint = props.role === 'admin' ? '/auth/admin/logout' : '/auth/client/logout'
-  const { data } = await api.post(endpoint)
+  const { data } = await api.post<RedirectResponse>(endpoint)
   auth.clearAuth()
-  router.push(data.redirect)
+  await router.push(data.redirect)
 }
 
-async function leaveImpersonation() {
-  const { data } = await api.post('/admin/impersonate/leave')
+async function leaveImpersonation(): Promise<void> {
+  const { data } = await api.post<RedirectResponse>('/admin/impersonate/leave')
   await auth.bootstrap(true)
-  router.push(data.redirect)
+  await router.push(data.redirect)
 }
 </script>
 

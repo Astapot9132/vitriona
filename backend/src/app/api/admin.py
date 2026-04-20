@@ -315,7 +315,7 @@ async def admin_ban_user(
     target = await uow.users.get_by_id(user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    target.is_banned = True
+    await uow.users.set_banned(user_id, is_banned=True)
     await uow.commit()
     return {"success": True}
 
@@ -329,7 +329,7 @@ async def admin_unban_user(
     target = await uow.users.get_by_id(user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    target.is_banned = False
+    await uow.users.set_banned(user_id, is_banned=False)
     await uow.commit()
     return {"success": True}
 
@@ -343,7 +343,7 @@ async def admin_make_admin(
     target = await uow.users.get_by_id(user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    target.is_admin = True
+    await uow.users.set_admin(user_id, is_admin=True)
     await uow.commit()
     return {"success": True}
 
@@ -357,7 +357,7 @@ async def admin_revoke_admin(
     target = await uow.users.get_by_id(user_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    target.is_admin = False
+    await uow.users.set_admin(user_id, is_admin=False)
     await uow.commit()
     return {"success": True}
 
@@ -379,7 +379,7 @@ async def admin_impersonate(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     if session:
-        await uow.sessions.delete(session)
+        await uow.sessions.close_session(session.id, reason="impersonation_started")
 
     await auth_session.create_auth_session(uow, response, request, target, impersonator_admin_id=admin.id)
     return {"redirect": "/dashboard"}
@@ -402,7 +402,7 @@ async def admin_impersonate_leave(
     if not admin:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
 
-    await uow.sessions.delete(session)
+    await uow.sessions.close_session(session.id, reason="impersonation_finished")
 
     await auth_session.create_auth_session(uow, response, request, admin)
     return {"redirect": "/admin/users"}

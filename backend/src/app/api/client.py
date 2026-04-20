@@ -266,11 +266,17 @@ async def onboarding_complete(
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    db_user.affise_password = password
-    db_user.affise_country = payload.country
-    db_user.affise_id = partner.get("id")
-    db_user.affise_api_key = partner.get("api_key")
+    await uow.users.update_affise_profile(
+        user.id,
+        affise_password=password,
+        affise_country=payload.country,
+        affise_id=partner.get("id"),
+        affise_api_key=partner.get("api_key"),
+    )
     await uow.commit()
+    db_user = await uow.users.get_by_id(user.id)
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
@@ -293,8 +299,11 @@ async def update_country(
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    db_user.affise_country = payload.country
+    await uow.users.update_affise_country(user.id, affise_country=payload.country)
     await uow.commit()
+    db_user = await uow.users.get_by_id(user.id)
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     sec.set_access_token(
         response,
         _auth_user_from_db(db_user, user),
@@ -539,10 +548,11 @@ async def showcase_update(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(showcase, key, value)
+    await uow.showcases.update_fields(showcase.id, **update_data)
     await uow.commit()
-    await uow.refresh(showcase)
+    showcase = await uow.showcases.get_by_id(showcase.id)
+    if not showcase:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     preview_url = None
     if "config" in update_data:
